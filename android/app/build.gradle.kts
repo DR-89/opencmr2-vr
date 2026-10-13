@@ -9,7 +9,7 @@ plugins {
 // The SDL3 release the desktop builds fetch (GIT_TAG in the top CMakeLists.txt).
 // Its source gives both libSDL3.so, built with the game, and SDLActivity.
 val sdlVersion: String = providers.fileContents(rootProject.layout.projectDirectory.file("../CMakeLists.txt"))
-    .asText.map { Regex("""GIT_TAG release-([0-9.]+)""").find(it)!!.groupValues[1] }.get()
+    .asText.map { Regex("""set\(OPENCMR2_SDL_REVISION release-([0-9.]+)\)""").find(it)!!.groupValues[1] }.get()
 
 abstract class FetchSdl : DefaultTask() {
     @get:Input abstract val version: Property<String>

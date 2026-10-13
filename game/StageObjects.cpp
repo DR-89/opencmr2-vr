@@ -4,6 +4,7 @@ short Car_GetOrderCount(void);
 #include "SoundCurve.h"
 #include "FloatToInt.h"
 #include "port/disk.h"
+#include "port/vr.h"
 #include "port/disk_layouts.h"
 #include "port/replay_disk.h"
 #include "ReplayStream.h"
@@ -12551,6 +12552,17 @@ void StageObject_UpdatePlayerControlIndicators(int player, int device)
                 g_controlCar->flag0x1d0[0] = 0x3f;
             else if ((pDev->field_0x4 & g_carButtonMasks[1]) != 0)
                 g_controlCar->flag0x1d0[1] = 0x3f;
+        }
+        // PORT: normalized Touch / USB input for the first local driver.
+        // This feeds the original analog path without rerunning the physics.
+        float vrSteer, vrThrottle, vrBrake;
+        if (player == 0 && VR_GetDriveInput(&vrSteer, &vrThrottle, &vrBrake)) {
+            g_controlCar->steeringInputMode = 2;
+            g_controlCar->analogThrottle = g_controlCar->analogBrake = 1;
+            g_controlCar->flag0x1d0[0] = (char)(vrSteer < 0 ? -vrSteer * 63 : 0);
+            g_controlCar->flag0x1d0[1] = (char)(vrSteer > 0 ? vrSteer * 63 : 0);
+            g_controlCar->flag0x1d0[2] = (char)(vrThrottle * 63);
+            g_controlCar->flag0x1d0[3] = (char)(vrBrake * 63);
         }
         if ((pDev->field_0x4 & g_carButtonMasks[4]) != 0)
             g_controlCar->handbrake = 1;

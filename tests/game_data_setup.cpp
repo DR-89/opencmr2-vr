@@ -16,6 +16,9 @@ static std::vector<std::string> folders, messages;
 static std::vector<std::thread> callbacks;
 static int dialogs;
 static bool exitSetup, dialogError, exitOnWarning;
+static std::vector<std::string> installCandidates;
+static int discoveryCalls;
+static std::vector<std::string> InstalledCandidates() { ++discoveryCalls; return installCandidates; }
 
 static void Check(bool condition, const char *message)
 {
@@ -108,6 +111,7 @@ int main()
                "[video]\r\nfov = 91\r\n[paths]\r\ndata = also-missing\r\n");
     const PlatformTestDialogs mock{OpenFolder, MessageBox};
     Platform_SetTestDialogs(&mock);
+    Platform_SetTestInstallCandidates(InstalledCandidates);
     folders = {(root / "incomplete").u8string(), game.u8string()};
     Check(Start(user), "select valid folder after incomplete folder");
     Check(dialogs == 2 && messages.size() == 2, "retry incomplete installation");
@@ -218,6 +222,65 @@ int main()
     Platform_Shutdown();
     if (!linkError)
         Check(SDL_RemovePath((noGame / "child/loop").u8string().c_str()), "remove cyclic symlink fixture");
+
+    // Windows registry/standard-folder candidates use the same validated startup
+    // path. Inject candidates so tests never select the developer's real game.
+    const fs::path autoGame = root / fs::u8path(u8"auto/Colin McRae Rally 2 ü");
+    fs::create_directories(autoGame.parent_path());
+    fs::copy(nestedGame, autoGame, fs::copy_options::recursive);
+    const fs::path autoUser = root / "auto-user";
+    Write(autoUser / "opencmr2.ini", "; preserve me\n[video]\nfov = 93\n");
+    installCandidates = {(root / "missing").u8string(), (root / "incomplete").u8string(), autoGame.u8string(),
+                         (autoGame / ".").u8string()};
+    int beforeAuto = dialogs;
+    Check(Start(autoUser), "detect one complete installation among stale/invalid/duplicate candidates");
+    const std::string autoPath = fs::weakly_canonical(autoGame).generic_u8string() + "/";
+    Check(dialogs == beforeAuto && std::string(Platform_GetDataDir()) == autoPath, "auto-detection skips folder dialog and normalizes aliases");
+    Check(Read(autoUser / "opencmr2.ini").find("data = " + autoPath) != std::string::npos &&
+          Read(autoUser / "opencmr2.ini").find("; preserve me") != std::string::npos &&
+          Platform_GetSettingInt("video.fov", 0) == 93, "persist detected UTF-8 path without changing other settings");
+    Platform_Shutdown();
+
+    const int scanned = discoveryCalls;
+    installCandidates = {secondGame.u8string()};
+    Check(Start(autoUser), "remembered installation wins over discovery on later launches");
+    Check(discoveryCalls == scanned && dialogs == beforeAuto && std::string(Platform_GetDataDir()) == autoPath,
+          "valid saved path prevents a registry search or changed selection");
+    Platform_Shutdown();
+    Check(Start(root / "explicit-auto-user", nestedGame.u8string()), "explicit path wins over discovered installations");
+    Check(discoveryCalls == scanned && dialogs == beforeAuto, "explicit path skips discovery");
+    Platform_Shutdown();
+
+    const fs::path movedAuto = root / "auto/moved";
+    fs::rename(autoGame, movedAuto);
+    installCandidates = {autoGame.u8string(), movedAuto.u8string()};
+    Check(Start(autoUser), "rediscover moved installation after saved path disappears");
+    Check(dialogs == beforeAuto && std::string(Platform_GetDataDir()) == fs::weakly_canonical(movedAuto).generic_u8string()+"/",
+          "update stale saved path automatically");
+    Platform_Shutdown();
+
+    installCandidates = {movedAuto.u8string(), secondGame.u8string()};
+    folders = {secondGame.u8string()};
+    const size_t beforeAutoAmbiguous = messages.size();
+    Check(Start(root / "auto-ambiguous-user"), "multiple auto-detected installations need a user choice");
+    Check(dialogs == beforeAuto + 1 && messages[beforeAutoAmbiguous].find("More than one") != std::string::npos &&
+          std::string(Platform_GetDataDir()) == secondGame.u8string()+"/", "do not silently choose among installations");
+    Platform_Shutdown();
+
+    installCandidates = {movedAuto.u8string()};
+    const fs::path blockedAuto = root / "auto-blocked-user";
+    Write(blockedAuto / "opencmr2.ini", "[video]\nfov = 89\n");
+    fs::create_directory(blockedAuto / "opencmr2.ini.tmp");
+    exitOnWarning = true;
+    Check(!Start(blockedAuto), "failed auto-save is surfaced instead of starting with an unremembered path");
+    Check(messages.back().find("could not be saved") != std::string::npos &&
+          Read(blockedAuto / "opencmr2.ini") == "[video]\nfov = 89\n", "auto-save failure preserves the existing configuration");
+    exitOnWarning = false;
+    installCandidates = {(root / "missing").u8string(), (root / "incomplete").u8string()};
+    folders = {nestedGame.u8string()};
+    Check(Start(root / "auto-missing-user"), "no valid detected game falls back to normal folder selection");
+    Platform_Shutdown();
+    installCandidates.clear();
 #ifdef __linux__
     // Without --user-dir, files that earlier versions kept one level deeper
     // (OpenCMR2/OpenCMR2) move up to the user directory.
@@ -259,7 +322,8 @@ int main()
     Check(dialogs == beforeExit, "exit does not open folder selector");
     Check(Platform_WasSetupCanceled(), "welcome exit is a clean exit");
     Platform_SetTestDialogs(nullptr);
+    Platform_SetTestInstallCandidates(nullptr);
     fs::current_path(previous);
     fs::remove_all(root);
-    puts("game data setup: retry, UTF-8 paths, persistence, explicit data, cancel, Data folder and folder discovery passed");
+    puts("game data setup: folder selection, automatic discovery, UTF-8, persistence, precedence, aliases, ambiguity and save failures passed");
 }

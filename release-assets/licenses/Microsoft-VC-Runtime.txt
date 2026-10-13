@@ -1,0 +1,9 @@
+The Windows release may include Microsoft Visual C++ runtime DLLs from the
+Microsoft Visual Studio 2022 x64 redistributable directory (Microsoft.VC143.CRT).
+These DLLs are Microsoft software and remain subject to Microsoft's license
+terms. They are not covered by the OpenCMR2 VR GPL license.
+
+Runtime information and installer:
+https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist
+
+The DLLs are included only as unmodified runtime dependencies of this application.

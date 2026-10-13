@@ -2573,6 +2573,8 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
     Tri2D_DrawLayer(4);
     Sprite_DrawLayer(4);
     if (flag != 0) {
+        // PORT: only stage geometry is a VR world; frontend 3D remains on a panel.
+        Gfx_SetVRWorld(g_sectorCount > 0);
         if (CGraphics::m_unk0x0072d56c != 0) {
             Gfx_SetTransform(GFX_TRANSFORM_WORLD, &g_unk0x005207b8);
             Sector_CullGridAroundViewNode(pCamera, pRect);
@@ -2658,6 +2660,8 @@ int Game_DrawSceneViewport(SceneNode *pRoot, SceneNode *pCamera, void *pRect, in
         Billboard_Draw(pCamera);
         Scene_DrawShadowBatches(bit);
     }
+    // PORT: HUD layers are projected onto the seated VR panel.
+    Gfx_SetVRWorld(FALSE);
     Flare_SampleVisibility(NULL, NULL, 0);
     CGraphics::SetZWriteEnable(0);
     CGraphics::SetZEnable(0);

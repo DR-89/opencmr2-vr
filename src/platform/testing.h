@@ -4,6 +4,8 @@
 #include "port/types.h"
 #include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_messagebox.h>
+#include <string>
+#include <vector>
 struct PlatformTestClock {
     DWORD (*ticks)();
     void (*sleep)(DWORD);
@@ -17,4 +19,6 @@ struct PlatformTestDialogs {
     bool (*messageBox)(const SDL_MessageBoxData *, int *);
 };
 void Platform_SetTestDialogs(const PlatformTestDialogs *dialogs);
+// An empty provider isolates startup tests from real installations on the host.
+void Platform_SetTestInstallCandidates(std::vector<std::string> (*provider)());
 #endif

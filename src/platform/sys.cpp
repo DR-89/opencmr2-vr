@@ -2,6 +2,7 @@
 
 #include "platform/platform.h"
 #include "platform/testing.h"
+#include "platform/install_discovery.h"
 #include "port/sys.h"
 
 #include <stdarg.h>
@@ -32,6 +33,7 @@ std::map<std::string, std::string> s_settings;  // "section.key" -> value
 FILE *s_logFile;
 const PlatformTestClock *s_testClock;
 const PlatformTestDialogs *s_testDialogs;
+std::vector<std::string> (*s_testInstallCandidates)();
 bool s_setupCanceled;
 
 FILE *OpenHostFile(const char *path, const char *mode)
@@ -427,13 +429,14 @@ void SDLCALL FolderSelected(void *userdata, const char *const *files, int)
     selection.done.store(true, std::memory_order_release);
 }
 
-bool SelectGameData(const std::string &settingsFile)
+bool SelectGameData(const std::string &settingsFile, const std::string &initialMessage = "")
 {
     std::string message = "Welcome to OpenCMR2\n\n"
                           "Choose a folder containing your Colin McRae Rally 2.0 copy for PC.\n"
                           "You can also choose a folder inside the installation.\n\n"
                           "Your files stay in place. You only need to choose this folder once.";
-    bool warning = false;
+    bool warning = !initialMessage.empty();
+    if (warning) message = initialMessage;
     while (AskForGameFolder(message, warning)) {
         FolderSelection selection;
         if (s_testDialogs)
@@ -487,6 +490,30 @@ bool SelectGameData(const std::string &settingsFile)
         return true;
     }
     return false;
+}
+
+// PORT: automatic detection is a fallback after explicit/saved/portable paths.
+// Every candidate needs the same three nonempty archives as a selected folder.
+// Resolve aliases so registry and conventional paths do not create ambiguity.
+std::vector<std::string> FindInstalledGameData()
+{
+    namespace fs = std::filesystem;
+    const auto candidates = s_testInstallCandidates ? s_testInstallCandidates() : FindInstalledGameCandidates();
+    std::vector<std::string> found;
+    for (const std::string &candidate : candidates) {
+        if (candidate.empty()) continue;
+        fs::path path = fs::u8path(candidate);
+        if (!path.is_absolute() || !MissingGameData(WithSlash(candidate)).empty()) continue;
+        std::error_code error;
+        fs::path canonical = fs::weakly_canonical(path, error);
+        if (error) continue;
+        bool duplicate = false;
+        for (const std::string &previous : found) {
+            if (fs::equivalent(canonical, fs::u8path(previous), error) && !error) { duplicate = true; break; }
+        }
+        if (!duplicate) found.push_back(WithSlash(canonical.generic_u8string()));
+    }
+    return found;
 }
 
 // Earlier versions kept the user files one level deeper, in OpenCMR2/OpenCMR2
@@ -609,6 +636,13 @@ bool Platform_Init(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--data") == 0 && i + 1 < argc) {
             dataDir = argv[++i];
+        } else if (strcmp(argv[i], "--vr-test") == 0) {
+            s_settings["vr.enabled"] = "1";
+            s_settings["vr.diagnostic"] = "1";
+        } else if (strcmp(argv[i], "--vr") == 0) {
+            s_settings["vr.enabled"] = "1";
+        } else if (strcmp(argv[i], "--no-vr") == 0) {
+            s_settings["vr.enabled"] = "0";
         } else if (strcmp(argv[i], "--user-dir") == 0 && i + 1 < argc) {
             ++i;
         } else {
@@ -619,6 +653,17 @@ bool Platform_Init(int argc, char **argv)
     }
 
     std::vector<std::string> candidates;
+    if (Platform_GetSettingInt("vr.enabled",0)) {
+#ifndef OPENCMR2_VR
+        fprintf(stderr,"This build has no OpenXR support. Build with OPENCMR2_VR=ON.\n");
+        Platform_Shutdown();
+        return false;
+#else
+        s_settings["video.run_in_background"]="1";
+        s_settings["video.fullscreen"]="0";
+#endif
+    }
+    if (Platform_GetSettingInt("vr.diagnostic",0)) return true;
     if (!dataDir.empty()) {
         const std::string missing = MissingGameData(WithSlash(dataDir));
         if (!missing.empty()) {
@@ -652,7 +697,22 @@ bool Platform_Init(int argc, char **argv)
             break;
         }
     }
-    if (s_dataDir.empty() && !SelectGameData(settingsFile)) {
+    std::string detectionMessage;
+    if (s_dataDir.empty()) {
+        const auto found = FindInstalledGameData();
+        if (found.size() == 1) {
+            if (SaveDataSetting(settingsFile, found.front())) {
+                s_dataDir = found.front();
+                Sys_Log("Automatically found game installation: %s", s_dataDir.c_str());
+            } else detectionMessage = "A game installation was found, but its location could not be saved.\n\n" +
+                found.front() + "\n\n" + SDL_GetError() + "\n\nCheck that this settings file is writable:\n" + settingsFile;
+        } else if (found.size() > 1) {
+            detectionMessage = "More than one game installation was found:\n";
+            for (size_t i = 0; i < found.size() && i < 8; ++i) detectionMessage += "\n- " + found[i];
+            detectionMessage += "\n\nSelect the installation you want to use. Your choice will be remembered.";
+        }
+    }
+    if (s_dataDir.empty() && !SelectGameData(settingsFile, detectionMessage)) {
         Platform_Shutdown();
         return false;
     }
@@ -720,6 +780,7 @@ extern "C" unsigned int Sys_GetUnixTime(void)
 
 void Platform_SetTestClock(const PlatformTestClock *clock) { s_testClock = clock; }
 void Platform_SetTestDialogs(const PlatformTestDialogs *dialogs) { s_testDialogs = dialogs; }
+void Platform_SetTestInstallCandidates(std::vector<std::string> (*provider)()) { s_testInstallCandidates = provider; }
 
 extern "C" void Sys_Sleep(DWORD ms)
 {

@@ -1,3 +1,19 @@
+# Headset-independent VR math and SDL virtual-gamepad regression tests.
+add_executable(vr_math_test vr_math.cpp)
+target_include_directories(vr_math_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_test(NAME vr_math COMMAND vr_math_test)
+add_executable(vr_input_test vr_input.cpp ${PROJECT_SOURCE_DIR}/src/vr/vr_input.cpp)
+target_include_directories(vr_input_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(vr_input_test PRIVATE OPENCMR2_VR=1)
+target_link_libraries(vr_input_test PRIVATE SDL3::SDL3)
+add_test(NAME vr_input COMMAND vr_input_test)
+if(OPENCMR2_VR)
+    add_executable(vr_loader_test vr_loader.cpp)
+    target_link_libraries(vr_loader_test PRIVATE SDL3::SDL3)
+    add_dependencies(vr_loader_test openxr_loader)
+    add_test(NAME vr_loader COMMAND vr_loader_test $<TARGET_FILE:openxr_loader>)
+endif()
+
 # Portable fixed-point helpers vs the original inline assembly. Needs a
 # 32-bit x86 build: clang compiles the MSVC-style assembly with -fasm-blocks.
 if(CMAKE_SIZEOF_VOID_P EQUAL 4 AND CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86|x86")
@@ -16,7 +32,7 @@ endif()
 
 add_executable(net_session_test net_session.cpp)
 target_link_libraries(net_session_test PRIVATE opencmr2_net)
-target_compile_options(net_session_test PRIVATE "SHELL:-include ${PROJECT_SOURCE_DIR}/src/port/types.h")
+target_compile_options(net_session_test PRIVATE "SHELL:-include \"${PROJECT_SOURCE_DIR}/src/port/types.h\"")
 add_test(NAME net_session COMMAND net_session_test)
 set_tests_properties(net_session PROPERTIES TIMEOUT 60)
 
@@ -38,7 +54,7 @@ add_test(NAME movie_render_state COMMAND movie_render_state_test)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "i[3-6]86|x86|AMD64|amd64")
     add_executable(ftoi_fistp_test ftoi_fistp.cpp)
     target_include_directories(ftoi_fistp_test PRIVATE ${PROJECT_SOURCE_DIR}/game)
-    target_compile_options(ftoi_fistp_test PRIVATE "SHELL:-include ${PROJECT_SOURCE_DIR}/src/port/types.h")
+    target_compile_options(ftoi_fistp_test PRIVATE "SHELL:-include \"${PROJECT_SOURCE_DIR}/src/port/types.h\"")
     add_test(NAME ftoi_fistp COMMAND ftoi_fistp_test)
 endif()
 

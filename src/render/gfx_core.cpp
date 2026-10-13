@@ -475,6 +475,7 @@ SETTER(Gfx_SetTextureFactor, DWORD, textureFactor)
     }
 
 BOOL_SETTER(Gfx_SetLighting, lighting)
+BOOL_SETTER(Gfx_SetVRWorld, vrWorld)
 BOOL_SETTER(Gfx_SetSpecular, specular)
 BOOL_SETTER(Gfx_SetLocalViewer, localViewer)
 BOOL_SETTER(Gfx_SetNormalizeNormals, normalizeNormals)

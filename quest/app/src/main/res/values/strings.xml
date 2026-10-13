@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenCMR2 VR</string>
+    <string name="data_setup_name">OpenCMR2 VR · Game data</string>
+    <string name="brand">OPENCMR2 VR</string>
+    <string name="setup_title">Your rally game. On your Quest.</string>
+    <string name="setup_intro">To play, you need the data from your own PC copy of Colin McRae Rally 2.0. Import it once onto this Quest.</string>
+    <string name="setup_steps">1   ZIP the entire installed game folder on your PC.\n2   Copy the ZIP to your Quest’s Download folder using USB.\n3   Select the ZIP here. We will check and import your files.</string>
+    <string name="setup_footer">Your files stay on your devices. Next time, the game starts directly. To import again, open “OpenCMR2 VR · Game data” in your app library.</string>
+    <string name="play">Start game</string>
+    <string name="choose_zip">Select game data ZIP</string>
+    <string name="replace_data">Import different game data</string>
+    <string name="diagnostic">VR test without game data</string>
+    <string name="cancel_import">Cancel import</string>
+    <string name="canceling">Canceling …</string>
+    <string name="please_wait">Please wait …</string>
+    <string name="progress_percent">%1$d%%</string>
+    <string name="replace_title">Import game data again?</string>
+    <string name="replace_message">Your existing game data will only be replaced after a successful check. Saved games and settings will be kept.</string>
+    <string name="back">Back</string>
+    <string name="select_zip">Select ZIP</string>
+    <string name="picker_unavailable">File picker unavailable</string>
+    <string name="picker_unavailable_message">No file picker is available on this Quest. Update Horizon OS and try again.</string>
+    <string name="ok">OK</string>
+    <string name="cancel_title">Cancel import?</string>
+    <string name="cancel_message">You can start the import again later. Your existing game data will be kept.</string>
+    <string name="keep_importing">Keep importing</string>
+    <string name="cancel">Cancel</string>
+</resources>

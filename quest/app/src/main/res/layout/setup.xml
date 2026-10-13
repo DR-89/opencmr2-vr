@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:background="#101722">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="32dp">
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:text="@string/brand" android:textColor="#79BAFF" android:textSize="14sp" android:letterSpacing="0.12" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="10dp" android:text="@string/setup_title"
+            android:textColor="#F2F5FA" android:textSize="28sp" android:textStyle="bold" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="12dp" android:textSize="16sp" android:textColor="#CCD6E5"
+            android:text="@string/setup_intro" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:layout_marginTop="22dp" android:textSize="16sp" android:textColor="#CCD6E5" android:lineSpacingExtra="6dp"
+            android:text="@string/setup_steps" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:background="#1D2B3D" android:padding="20dp" android:layout_marginTop="24dp">
+            <TextView android:id="@+id/status_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textSize="21sp" android:textStyle="bold" android:textColor="#F2F5FA" android:accessibilityLiveRegion="polite" />
+            <TextView android:id="@+id/status_detail" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:textSize="16sp" android:textColor="#CCD6E5" android:layout_marginTop="10dp" android:lineSpacingExtra="4dp" />
+            <ProgressBar android:id="@+id/progress" style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent" android:layout_height="12dp" android:max="100" android:layout_marginTop="14dp"
+                android:progressTint="#79BAFF" android:indeterminateTint="#79BAFF" />
+            <TextView android:id="@+id/progress_label" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:layout_marginTop="8dp" android:textColor="#CCD6E5" android:textSize="14sp" />
+            <Button android:id="@+id/cancel" android:layout_width="wrap_content" android:layout_height="wrap_content"
+                android:minHeight="52dp" android:text="@string/cancel_import" android:textAllCaps="false" android:layout_marginTop="8dp" />
+        </LinearLayout>
+        <Button android:id="@+id/play" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="58dp" android:layout_marginTop="20dp" android:text="@string/play" android:textSize="18sp"
+            android:textAllCaps="false" android:backgroundTint="#79BAFF" android:textColor="#101722" android:visibility="gone" />
+        <Button android:id="@+id/choose_zip" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="58dp" android:layout_marginTop="12dp" android:text="@string/choose_zip" android:textSize="17sp"
+            android:textAllCaps="false" android:backgroundTint="#D5E7FF" android:textColor="#101722" />
+        <Button android:id="@+id/diagnostic" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:minHeight="56dp" android:layout_marginTop="6dp" android:text="@string/diagnostic" android:textSize="16sp" android:textAllCaps="false" />
+        <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="12dp"
+            android:text="@string/setup_footer"
+            android:textColor="#9AABC1" android:textSize="14sp" android:lineSpacingExtra="4dp" />
+    </LinearLayout>
+</ScrollView>

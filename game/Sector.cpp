@@ -11,6 +11,7 @@
 #include "FileBuffer.h"
 #include "port/disk_layouts.h"
 #include "port/sys.h"
+#include "port/vr.h"
 
 int g_sectorsPerRow;
 Sector *g_sectors[14096];
@@ -700,7 +701,9 @@ void Sector_CullGridAroundViewNode(SceneNode *pNode, void *pRect)
     for (row = rowStart; row < rowEnd; row++) {
         for (col = colStart; col < colEnd; col++) {
             index = row * g_sectorsPerRow + col;
-            if (Tri2D_Contains(g_sectors[index]->bounds[2], tri) ||
+            // PORT: stereo head tracking can look behind the original camera.
+            // Retain the distance-limited grid, widen its angular visibility.
+            if (VR_IsEnabled() || Tri2D_Contains(g_sectors[index]->bounds[2], tri) ||
                 Tri2D_Contains(g_sectors[index]->bounds[3], tri) ||
                 Tri2D_Contains(g_sectors[index]->bounds[1], tri) ||
                 Tri2D_Contains(g_sectors[index]->bounds[0], tri) ||

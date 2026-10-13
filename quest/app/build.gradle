@@ -1,0 +1,42 @@
+plugins { id 'com.android.application' }
+def sourceRoot = rootProject.projectDir.parentFile
+def sdlSource = new File(sourceRoot, 'build/deps/SDL')
+def xrSource = new File(sourceRoot, 'build/deps/OpenXR-SDK')
+android {
+    namespace 'org.opencmr2.vr'
+    compileSdk 35
+    buildToolsVersion '35.0.0'
+    ndkVersion '29.0.14206865'
+    defaultConfig {
+        applicationId 'org.opencmr2.vr'
+        minSdk 29
+        targetSdk 32
+        versionCode 2
+        versionName '0.1.0-alpha.1'
+        ndk { abiFilters 'arm64-v8a' }
+        externalNativeBuild {
+            cmake {
+                arguments '-DOPENCMR2_VR=ON', '-DANDROID_STL=c++_static', '-DCMAKE_BUILD_TYPE=RelWithDebInfo',
+                    "-DFETCHCONTENT_SOURCE_DIR_SDL3=${sdlSource.absolutePath.replace('\\','/')}",
+                    "-DFETCHCONTENT_SOURCE_DIR_OPENXR=${xrSource.absolutePath.replace('\\','/')}",
+                    "-DGLSLANG_VALIDATOR=${System.getenv('GLSLANG_VALIDATOR') ?: new File(sourceRoot,'build/host-glslang/StandAlone/glslang.exe').absolutePath}"
+                targets 'opencmr2', 'SDL3-shared', 'openxr_loader'
+            }
+        }
+    }
+    externalNativeBuild { cmake { path file('../../CMakeLists.txt'); version '4.4.0' } }
+    sourceSets { main {
+        java.srcDirs += new File(sdlSource,'android-project/app/src/main/java')
+        assets.srcDirs += new File(sourceRoot, 'release-assets')
+    } }
+    buildTypes { debug { debuggable true }; release { minifyEnabled false } }
+    packaging { jniLibs { useLegacyPackaging true } }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}
+dependencies { testImplementation 'junit:junit:4.13.2' }
+tasks.named('preBuild') {
+    doFirst {
+        if (!new File(sdlSource,'include/SDL3/SDL_openxr.h').exists() || !xrSource.exists())
+            throw new GradleException('Run tools/prepare-vr-deps.ps1 first.')
+    }
+}

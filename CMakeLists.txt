@@ -20,7 +20,14 @@ if(CMAKE_CXX_COMPILER_FRONTEND_VARIANT STREQUAL "MSVC")
 endif()
 
 option(OPENCMR2_SANITIZE "Build with AddressSanitizer and UBSan" OFF)
+option(OPENCMR2_VR "Build the OpenXR Quest / PCVR port" OFF)
 option(OPENCMR2_VENDORED_SDL "Download and build SDL3 instead of using an installed one" ${ANDROID})
+if(OPENCMR2_VR)
+    # Pinned development SDL: SDL_GPU/OpenXR interop is newer than SDL 3.4.
+    # Keep the Android Java sources at precisely the same revision.
+    set(OPENCMR2_VENDORED_SDL ON)
+    set(SDL_GPU_OPENXR ON CACHE BOOL "" FORCE)
+endif()
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -61,11 +68,34 @@ if(NOT TARGET SDL3::SDL3)
     set(SDL_STATIC OFF CACHE BOOL "" FORCE)
     set(SDL_TEST_LIBRARY OFF CACHE BOOL "" FORCE)
     set(SDL_EXAMPLES OFF CACHE BOOL "" FORCE)
+    set(OPENCMR2_SDL_REVISION release-3.4.18)
+    if(OPENCMR2_VR)
+        set(OPENCMR2_SDL_REVISION 5180c654d439ad7df5eb99481fd0e3f027db65de)
+    endif()
     FetchContent_Declare(SDL3
         GIT_REPOSITORY https://github.com/libsdl-org/SDL.git
-        GIT_TAG release-3.4.18
-        GIT_SHALLOW TRUE)
+        GIT_TAG ${OPENCMR2_SDL_REVISION})
     FetchContent_MakeAvailable(SDL3)
+    if(OPENCMR2_VR)
+        include(cmake/patch_sdl_openxr.cmake)
+    endif()
+endif()
+
+if(OPENCMR2_VR)
+    include(FetchContent)
+    set(DYNAMIC_LOADER ON CACHE BOOL "" FORCE) # SDL loads openxr_loader at runtime
+    set(BUILD_API_LAYERS OFF CACHE BOOL "" FORCE)
+    set(BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(BUILD_CONFORMANCE_TESTS OFF CACHE BOOL "" FORCE)
+    FetchContent_Declare(openxr
+        GIT_REPOSITORY https://github.com/KhronosGroup/OpenXR-SDK.git
+        GIT_TAG f2448a8797c85814aa892efc1ab8707900fbcc78)
+    FetchContent_MakeAvailable(openxr)
+    if(WIN32 AND NOT MSVC)
+        # Khronos adds its DLL export list only for the MSVC frontend. This
+        # project uses GNU-style Clang with the MSVC ABI; it needs the same list.
+        target_sources(openxr_loader PRIVATE "${openxr_SOURCE_DIR}/src/loader/openxr-loader.def")
+    endif()
 endif()
 
 add_subdirectory(src)

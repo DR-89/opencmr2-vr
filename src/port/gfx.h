@@ -23,6 +23,8 @@ extern "C" {
 
 typedef struct GfxTexture GfxTexture;
 typedef struct GfxVertexBuffer GfxVertexBuffer;
+/* PORT: mark race geometry for stereo replay. */
+void Gfx_SetVRWorld(BOOL enabled);
 
 /* Row-vector matrix, Direct3D layout: v' = v * M, translation in _41.._43. */
 typedef struct GfxMatrix {

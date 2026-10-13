@@ -58,6 +58,8 @@ def main():
     parser.add_argument("--dll-dir", action="append", default=[], type=Path)
     parser.add_argument("--library", action="append", default=[], type=Path)
     parser.add_argument("--license", action="append", default=[], type=Path)
+    parser.add_argument("--include", action="append", default=[], type=Path,
+                        help="additional file placed beside the executable (repeatable)")
     parser.add_argument("--output", required=True, type=Path, help="archive to create")
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
@@ -70,15 +72,20 @@ def main():
         parser.error("The output must be a .zip or .tar.gz")
     if args.output.exists():
         parser.error(f"Output already exists: {args.output}")
-    for path in [*args.library, *args.license]:
+    for path in [*args.library, *args.license, *args.include]:
         if not path.is_file():
             parser.error(f"Missing file: {path}")
 
     if binary.suffix.lower() == ".exe":
         files = dll_dependencies(binary, [binary.parent, *args.dll_dir])
+        # OpenXR is loaded dynamically by SDL, so it is not an executable import.
+        for library in args.library:
+            files += dll_dependencies(library, [library.parent, binary.parent, *args.dll_dir])
+        files = list({path.name.lower(): path for path in files}.values())
     else:
         files = [binary, *args.library]
     entries = [(path, f"{folder}/{path.name}") for path in files]
+    entries += [(path, f"{folder}/{path.name}") for path in args.include]
     licenses = [(ROOT / "LICENSE", "OpenCMR2-LICENSE"),
                 (ROOT / "third_party/enet/LICENSE", "ENet-LICENSE"),
                 (ROOT / "src/video/COPYING.LGPLv2.1", "Bink-decoder-COPYING.LGPLv2.1")]

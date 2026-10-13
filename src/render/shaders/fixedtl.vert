@@ -22,6 +22,12 @@ void main()
     float x = (inPosition.x + 0.5) / target.x * 2.0 - 1.0;
     float y = 1.0 - (inPosition.y + 0.5) / target.y * 2.0;
     gl_Position = vec4(x * w, y * w, inPosition.z * w, w);
+    if (vrParams.x == 1.0 && abs(vrSource.x) > 0.00001 && abs(vrSource.y) > 0.00001) {
+        vec3 camera = vec3((x-vrSource.z)*w/vrSource.x, (y-vrSource.w)*w/vrSource.y, w);
+        gl_Position = vrClip * vec4(camera, 1.0);
+    } else if (vrParams.x == 2.0) {
+        gl_Position = vrClip * vec4(x*vrParams.y, y*vrParams.z, vrParams.w, 1.0);
+    }
     outDiffuse = inDiffuse.zyxw;
     outSpecular = inSpecular.zyxw;
     outTex0 = vec4(inTex, 1.0, 0.0);

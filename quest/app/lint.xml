@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- SDL explicitly checks Bluetooth permissions before enabling its optional
+         BLE Steam Controller path. This app does not request these permissions.
+         Keep permission checks enabled for all first-party importer code. -->
+    <issue id="MissingPermission">
+        <ignore path="../../build/deps/SDL/android-project/app/src/main/java/org/libsdl/app/HIDDeviceManager.java" />
+        <ignore path="../../build/deps/SDL/android-project/app/src/main/java/org/libsdl/app/HIDDeviceBLESteamController.java" />
+    </issue>
+</lint>

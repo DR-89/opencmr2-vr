@@ -1,0 +1,16 @@
+# PORT: the pinned SDL revision leaves XrApiLayerProperties headers uninitialized.
+# Apply the same small, idempotent correction to fetched and overridden sources.
+set(_xr_source "${sdl3_SOURCE_DIR}/src/gpu/xr/SDL_gpu_openxr.c")
+file(READ "${_xr_source}" _xr_text)
+set(_xr_marker "/* OpenCMR2 VR: initialize OpenXR output structure headers. */")
+string(FIND "${_xr_text}" "${_xr_marker}" _xr_already)
+if(_xr_already EQUAL -1)
+    set(_xr_old "    XrApiLayerProperties *apiLayerProperties = SDL_stack_alloc(XrApiLayerProperties, apiLayerCount);")
+    string(FIND "${_xr_text}" "${_xr_old}" _xr_location)
+    if(_xr_location EQUAL -1)
+        message(FATAL_ERROR "Unexpected SDL OpenXR source; review the pinned dependency patch")
+    endif()
+    set(_xr_new "${_xr_old}\n    ${_xr_marker}\n    if (!apiLayerProperties) {\n        SDL_OutOfMemory();\n        return false;\n    }\n    SDL_memset(apiLayerProperties, 0, sizeof(*apiLayerProperties) * apiLayerCount);\n    for (Uint32 i = 0; i < apiLayerCount; ++i) {\n        apiLayerProperties[i].type = XR_TYPE_API_LAYER_PROPERTIES;\n    }")
+    string(REPLACE "${_xr_old}" "${_xr_new}" _xr_text "${_xr_text}")
+    file(WRITE "${_xr_source}" "${_xr_text}")
+endif()

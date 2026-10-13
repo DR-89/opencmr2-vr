@@ -5,6 +5,8 @@
 #include "port/sys.h"
 #include "render/presentation.h"
 #include "render/gfx_internal.h"
+#include "vr/runtime.h"
+#include "port/vr.h"
 
 #include "shaders_spirv.h"
 
@@ -42,6 +44,7 @@ struct VertexUniforms {
     float fogParams[4];
     int32_t texCoordIndex[4];
     float target[4];
+    float vrClip[16], vrParams[4], vrSource[4];
 };
 
 struct FragmentUniforms {
@@ -161,12 +164,20 @@ struct Executor : GfxExecutor {
     std::unordered_map<uint32_t, SDL_GPUSampler *> samplers;
     bool bcSupported = true;
     bool presentModeVsync = true;
+    SDL_GPUTexture *eyeColor[2] = {}, *eyeDepth[2] = {};
+    bool eyeInitialized[2] = {}, worldFrame = false, windowClaimed = false;
+    int executionEye = -1;
 
     ~Executor() override
     {
         if (device == NULL)
             return;
         SDL_WaitForGPUIdle(device);
+        VR::Shutdown(device);
+        for (int i=0; i<2; ++i) {
+            SDL_ReleaseGPUTexture(device, eyeColor[i]);
+            SDL_ReleaseGPUTexture(device, eyeDepth[i]);
+        }
         for (auto &p : pipelines)
             SDL_ReleaseGPUGraphicsPipeline(device, p.second);
         for (auto &s : samplers)
@@ -182,7 +193,7 @@ struct Executor : GfxExecutor {
         SDL_ReleaseGPUShader(device, fs);
         SDL_ReleaseGPUShader(device, vsClear);
         SDL_ReleaseGPUShader(device, fsClear);
-        SDL_ReleaseWindowFromGPUDevice(device, window);
+        if (windowClaimed) SDL_ReleaseWindowFromGPUDevice(device, window);
         SDL_DestroyGPUDevice(device);
     }
 
@@ -258,22 +269,44 @@ struct Executor : GfxExecutor {
         SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_FEATURE_ANISOTROPY_BOOLEAN,
                                Platform_GetSettingInt("video.anisotropy", 1) > 1);
 #endif
+        VR::ConfigureDevice(props);
         device = SDL_CreateGPUDeviceWithProperties(props);
         SDL_DestroyProperties(props);
         if (device == NULL) {
             Sys_Log("gfx: SDL_CreateGPUDevice: %s", SDL_GetError());
+            if (VR_IsEnabled())
+                Sys_Log("vr: ensure the active OpenXR runtime has a connected headset and supports Vulkan");
             return false;
         }
         if (!(SDL_GetGPUShaderFormats(device) & SDL_GPU_SHADERFORMAT_SPIRV))
             shaderFormat = SDL_GPU_SHADERFORMAT_MSL;
-        if (!SDL_ClaimWindowForGPUDevice(device, window)) {
+        bool claimWindow = true;
+#ifdef __ANDROID__
+        claimWindow = !VR_IsEnabled();
+#endif
+        if (claimWindow && !SDL_ClaimWindowForGPUDevice(device, window)) {
             Sys_Log("gfx: SDL_ClaimWindowForGPUDevice: %s", SDL_GetError());
             return false;
         }
         Sys_Log("gfx: SDL_GPU driver %s", SDL_GetGPUDeviceDriver(device));
+        windowClaimed = claimWindow;
+        if (!VR::Initialize(device)) {
+            Sys_Log("vr: initialization failed; check the OpenXR runtime and headset");
+            return false;
+        }
         if (!SDL_GPUTextureSupportsFormat(device, depthFormat, SDL_GPU_TEXTURETYPE_2D,
                                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
             depthFormat = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
+        if (VR_IsEnabled()) {
+            for (int i=0;i<2;++i) {
+                const auto &eye=VR::GetEye(i);
+                eyeColor[i]=CreateTexture(SDL_GPU_TEXTURETYPE_2D,colorFormat,eye.width,eye.height,1,1,
+                    SDL_GPU_TEXTUREUSAGE_COLOR_TARGET|SDL_GPU_TEXTUREUSAGE_SAMPLER);
+                eyeDepth[i]=CreateTexture(SDL_GPU_TEXTURETYPE_2D,depthFormat,eye.width,eye.height,1,1,
+                    SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
+                if (!eyeColor[i] || !eyeDepth[i]) return false;
+            }
+        }
         bcSupported = SDL_GPUTextureSupportsFormat(device, SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM,
                                                    SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREUSAGE_SAMPLER);
 
@@ -739,6 +772,30 @@ struct Executor : GfxExecutor {
         // Direct3D 7's half-pixel offset of the viewport transform.
         u.target[2] = s.viewport.width ? 1.0f / s.viewport.width : 0.0f;
         u.target[3] = s.viewport.height ? -1.0f / s.viewport.height : 0.0f;
+        if (executionEye >= 0) {
+            u.target[2] = u.target[3] = 0;
+            const auto &eye = VR::GetEye(executionEye);
+            if (!cmd.transformed && s.vrWorld) {
+                auto view = VR::Multiply(s.view, eye.view);
+                Multiply(s.world, view, u.worldView);
+                memcpy(u.projection, &eye.projection, sizeof(u.projection));
+                for (int i=0; i<8; ++i) {
+                    TransformPoint(s.lights[i].position,1,view,u.lights[i].position);
+                    TransformPoint(s.lights[i].direction,0,view,u.lights[i].direction);
+                }
+            } else if (cmd.transformed) {
+                u.target[0]=(float)backWidth; u.target[1]=(float)backHeight;
+                auto matrix = VR::Multiply(eye.view,eye.projection);
+                memcpy(u.vrClip,&matrix,sizeof(u.vrClip));
+                u.vrParams[0]=s.vrWorld ? 1.0f : 2.0f;
+                float units=std::clamp(Platform_GetSettingInt("vr.world_scale_percent",100),10,1000)/100.0f;
+                u.vrParams[1]=1.5f*units;
+                u.vrParams[2]=1.5f*units*backHeight/backWidth;
+                u.vrParams[3]=2.5f*units;
+                u.vrSource[0]=s.projection._11; u.vrSource[1]=s.projection._22;
+                u.vrSource[2]=s.projection._31; u.vrSource[3]=s.projection._32;
+            }
+        }
         (void)cmd;
     }
 
@@ -863,10 +920,15 @@ struct Executor : GfxExecutor {
         depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
         depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
         if (target == NULL) {
-            color.texture = backColor;
-            depth.texture = backDepth;
-            w = backWidth;
-            h = backHeight;
+            color.texture = executionEye < 0 ? backColor : eyeColor[executionEye];
+            depth.texture = executionEye < 0 ? backDepth : eyeDepth[executionEye];
+            w = executionEye < 0 ? backWidth : VR::GetEye(executionEye).width;
+            h = executionEye < 0 ? backHeight : VR::GetEye(executionEye).height;
+            if (executionEye >= 0 && !eyeInitialized[executionEye]) {
+                color.load_op=SDL_GPU_LOADOP_CLEAR; color.clear_color={0,0,0,1};
+                depth.load_op=SDL_GPU_LOADOP_CLEAR; depth.clear_depth=1;
+                eyeInitialized[executionEye]=true;
+            }
         } else {
             GfxTexture *root = target->cube != NULL ? target->cube : target;
             GpuTexture *g = Ensure(root);
@@ -884,6 +946,7 @@ struct Executor : GfxExecutor {
     {
         if (device == NULL)
             return;
+        VR::BeginFrame();
         SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(device);
         if (cmd == NULL) {
             Sys_Log("gfx: %s", SDL_GetError());
@@ -900,6 +963,7 @@ struct Executor : GfxExecutor {
         UploadTextures(cmd, textures);
         UploadGeometry(cmd, frame);
 
+        for (executionEye=-1; executionEye < (VR::Rendering()?2:0); ++executionEye) {
         SDL_GPURenderPass *pass = NULL;
         GfxTexture *target = NULL;
         int targetW = backWidth, targetH = backHeight;
@@ -912,6 +976,8 @@ struct Executor : GfxExecutor {
                 target = c.target;
                 continue;
             }
+            // Reflection maps execute once, on the shared mono pass.
+            if (executionEye >= 0 && target != NULL) continue;
             if (pass == NULL)
                 pass = BeginPass(cmd, target, targetW, targetH);
             if (c.type == GFX_CMD_CLEAR) {
@@ -922,9 +988,11 @@ struct Executor : GfxExecutor {
                 SDL_BindGPUGraphicsPipeline(pass, ClearPipeline(colorClear, depthClear));
                 SDL_GPUViewport vp = { (float)c.clearViewport.x, (float)c.clearViewport.y,
                                        (float)c.clearViewport.width, (float)c.clearViewport.height, 0.0f, 1.0f };
+                if (executionEye >= 0) vp={0,0,(float)targetW,(float)targetH,0,1};
                 SDL_SetGPUViewport(pass, &vp);
                 SDL_Rect scissor = { (int)c.clearViewport.x, (int)c.clearViewport.y, (int)c.clearViewport.width,
                                      (int)c.clearViewport.height };
+                if (executionEye >= 0) scissor={0,0,targetW,targetH};
                 SDL_SetGPUScissor(pass, &scissor);
                 ClearUniforms u = {};
                 Color(c.clearColor, u.color);
@@ -935,6 +1003,15 @@ struct Executor : GfxExecutor {
                 continue;
             }
             const GfxDrawState &s = frame.states[c.state];
+            if (target == NULL && s.vrWorld) worldFrame=true;
+#ifdef __ANDROID__
+            // Quest has no desktop mirror. Keep the mono pass for menus,
+            // reflection targets and requested readbacks, but avoid drawing
+            // the entire stage a third time when only the two eyes use it.
+            if (executionEye < 0 && VR::Rendering() && target == NULL && s.vrWorld && !readback.requested)
+                continue;
+#endif
+            if (executionEye >= 0 && !s.vrWorld && !c.transformed) continue;
             SDL_GPUGraphicsPipeline *pipeline = Pipeline(c, s);
             if (pipeline == NULL)
                 continue;
@@ -947,6 +1024,11 @@ struct Executor : GfxExecutor {
                        s.viewport.minZ, s.viewport.maxZ };
             SDL_SetGPUViewport(pass, &vp);
             SDL_Rect scissor = { (int)s.viewport.x, (int)s.viewport.y, (int)s.viewport.width, (int)s.viewport.height };
+            if (executionEye >= 0) {
+                vp={0,0,(float)targetW,(float)targetH,0,1};
+                SDL_SetGPUViewport(pass,&vp);
+                scissor={0,0,targetW,targetH};
+            }
             SDL_SetGPUScissor(pass, &scissor);
             VertexUniforms vu;
             FillVertexUniforms(c, s, targetW, targetH, vu);
@@ -967,6 +1049,8 @@ struct Executor : GfxExecutor {
         }
         if (pass != NULL)
             SDL_EndGPURenderPass(pass);
+        }
+        executionEye=-1;
 
         if (!present) {
             SDL_SubmitGPUCommandBuffer(cmd);
@@ -996,7 +1080,8 @@ struct Executor : GfxExecutor {
             readback.readyHeight = h;
         }
 
-        if (vsync != presentModeVsync) {
+        if (VR_IsEnabled()) vsync=false;
+        if (windowClaimed && vsync != presentModeVsync) {
             SDL_GPUPresentMode mode = vsync ? SDL_GPU_PRESENTMODE_VSYNC : SDL_GPU_PRESENTMODE_IMMEDIATE;
             if (!vsync && !SDL_WindowSupportsGPUPresentMode(device, window, mode))
                 mode = SDL_GPU_PRESENTMODE_MAILBOX;
@@ -1007,7 +1092,7 @@ struct Executor : GfxExecutor {
 
         SDL_GPUTexture *swapchain = NULL;
         Uint32 sw = 0, sh = 0;
-        if (SDL_WaitAndAcquireGPUSwapchainTexture(cmd, window, &swapchain, &sw, &sh) && swapchain != NULL) {
+        if (windowClaimed && SDL_WaitAndAcquireGPUSwapchainTexture(cmd, window, &swapchain, &sw, &sh) && swapchain != NULL) {
             // Movie frames fill the drawable; ordinary game frames retain their aspect ratio.
             PresentationRect rect = GetPresentationRect(backWidth, backHeight, sw, sh, stretch);
             SDL_GPUBlitInfo blit = {};
@@ -1038,6 +1123,9 @@ struct Executor : GfxExecutor {
         } else {
             SDL_SubmitGPUCommandBuffer(cmd);
         }
+        VR::EndFrame(worldFrame,backColor,eyeColor[0],eyeColor[1],backWidth,backHeight);
+        worldFrame=false;
+        eyeInitialized[0]=eyeInitialized[1]=false;
     }
 };
 

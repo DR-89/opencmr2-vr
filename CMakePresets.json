@@ -53,6 +53,12 @@
       "displayName": "Windows, x64 (clang++ from LLVM or Visual Studio, MSVC runtime)",
       "architecture": { "value": "x64", "strategy": "external" },
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" }
+    },
+    {
+      "name": "windows-vr",
+      "inherits": "windows-x64",
+      "displayName": "Windows x64 OpenXR VR",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "OPENCMR2_VR": "ON" }
     }
   ],
   "buildPresets": [
@@ -61,12 +67,14 @@
     { "name": "linux", "configurePreset": "linux" },
     { "name": "linux-debug", "configurePreset": "linux-debug" },
     { "name": "macos", "configurePreset": "macos" },
-    { "name": "windows-x64", "configurePreset": "windows-x64" }
+    { "name": "windows-x64", "configurePreset": "windows-x64" },
+    { "name": "windows-vr", "configurePreset": "windows-vr" }
   ],
   "testPresets": [
     { "name": "linux-x86", "configurePreset": "linux-x86", "output": { "outputOnFailure": true } },
     { "name": "linux", "configurePreset": "linux", "output": { "outputOnFailure": true } },
     { "name": "macos", "configurePreset": "macos", "output": { "outputOnFailure": true } },
-    { "name": "windows-x64", "configurePreset": "windows-x64", "output": { "outputOnFailure": true } }
+    { "name": "windows-x64", "configurePreset": "windows-x64", "output": { "outputOnFailure": true } },
+    { "name": "windows-vr", "configurePreset": "windows-vr", "output": { "outputOnFailure": true } }
   ]
 }

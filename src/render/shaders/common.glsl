@@ -28,4 +28,7 @@ layout(std140, set = 1, binding = 0) uniform VertexUniforms {
     vec4 fogParams;         // start, end, -, -
     ivec4 texCoordIndex;    // stage 0, stage 1, texture transform 0, texture transform 1
     vec4 target;            // render target width, height; viewport half-pixel offset x, y (NDC)
+    mat4 vrClip;
+    vec4 vrParams;          // flat/world/panel mode, panel half width/height/distance
+    vec4 vrSource;          // source projection X/Y scale and centre
 };

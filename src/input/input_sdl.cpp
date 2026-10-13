@@ -3,6 +3,7 @@
 #include "platform/platform.h"
 #include "platform/testing.h"
 #include "port/input.h"
+#include "port/vr.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -343,6 +344,7 @@ extern "C" BOOL Input_ReadKeyboard(InputDevice *device, BYTE keys[256])
                 keys[dik] = 0x80;
         }
     }
+    VR_MergeKeyboard(keys);
     return TRUE;
 }
 
@@ -396,6 +398,11 @@ extern "C" BOOL Input_IsKeyDown(int key)
 {
     if (s_testKeyboard)
         return key >= 0 && key < 256 && (s_testKeyboard[key] & 0x80);
+    if (VR_IsEnabled()) {
+        BYTE keys[256];
+        Input_ReadKeyboard(NULL, keys);
+        return key >= 0 && key < 256 && (keys[key] & 0x80);
+    }
     int count = 0;
     const bool *state = SDL_GetKeyboardState(&count);
     SDL_Scancode scancode = Keys_ToScancode(key);

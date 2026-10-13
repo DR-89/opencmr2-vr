@@ -16,8 +16,8 @@ add_library(cmr2_game OBJECT ${GAME_SOURCES})
 target_include_directories(cmr2_game PUBLIC ${GAME_DIR} ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/port/compat)
 target_compile_options(cmr2_game PRIVATE
     $<$<COMPILE_LANGUAGE:C>:-x c>
-    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/port/types.h"
-    "SHELL:-include ${CMAKE_CURRENT_SOURCE_DIR}/port/msvcrt.h"
+    "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/port/types.h\""
+    "SHELL:-include \"${CMAKE_CURRENT_SOURCE_DIR}/port/msvcrt.h\""
     -fms-extensions
     -Wno-everything
     -ferror-limit=0)
@@ -46,6 +46,12 @@ add_library(opencmr2_platform STATIC
 target_sources(opencmr2_platform PRIVATE diagnostics/observer.cpp diagnostics/timing.cpp)
 target_include_directories(opencmr2_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR} ${GAME_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/port/compat)
 target_link_libraries(opencmr2_platform PUBLIC SDL3::SDL3)
+target_sources(opencmr2_platform PRIVATE vr/vr_input.cpp vr/diagnostic.cpp)
+if(OPENCMR2_VR)
+    target_compile_definitions(opencmr2_platform PUBLIC OPENCMR2_VR=1)
+    target_sources(opencmr2_platform PRIVATE vr/runtime.cpp)
+    target_link_libraries(opencmr2_platform PUBLIC OpenXR::openxr_loader)
+endif()
 
 
 if(ANDROID)
@@ -59,7 +65,7 @@ target_link_libraries(opencmr2 PRIVATE opencmr2_platform)
 if(WIN32)
     target_sources(opencmr2 PRIVATE ${PROJECT_SOURCE_DIR}/res/opencmr2.rc)
     # SDL3.dll (and any other runtime DLL) next to the executable.
-    add_custom_command(TARGET opencmr2 POST_BUILD
+    add_custom_target(opencmr2_runtime_files ALL DEPENDS opencmr2
         COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_RUNTIME_DLLS:opencmr2> $<TARGET_FILE_DIR:opencmr2>
         COMMAND_EXPAND_LISTS)
 elseif(OPENCMR2_BUILT_SDL AND NOT ANDROID)
@@ -161,6 +167,14 @@ if(WIN32)
     target_link_libraries(opencmr2_shortcut PRIVATE ole32 uuid shell32)
 endif()
 target_link_libraries(opencmr2_platform PUBLIC opencmr2_shortcut)
+
+# Native registry headers must also stay outside the game compatibility target.
+add_library(opencmr2_install_discovery STATIC platform/install_discovery.cpp)
+target_include_directories(opencmr2_install_discovery PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+if(WIN32)
+    target_link_libraries(opencmr2_install_discovery PRIVATE advapi32)
+endif()
+target_link_libraries(opencmr2_platform PUBLIC opencmr2_install_discovery)
 
 # ---- network (UDP with ENet, third_party/enet) -------------------------------------
 set(ENET_DIR ${PROJECT_SOURCE_DIR}/third_party/enet)

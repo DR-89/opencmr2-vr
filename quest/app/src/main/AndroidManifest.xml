@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:metavr="http://schemas.meta.com/metavr-sdk">
+    <metavr:uses-metavr-sdk metavr:minSdkVersion="69" metavr:targetSdkVersion="69" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="org.khronos.openxr.permission.OPENXR_SYSTEM" />
+    <uses-feature android:name="android.hardware.vr.headtracking" android:version="1" android:required="true" />
+    <uses-feature android:name="android.hardware.vulkan.version" android:version="0x00401000" android:required="true" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.gamepad" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <queries>
+        <provider android:authorities="org.khronos.openxr.runtime_broker;org.khronos.openxr.system_runtime_broker" />
+        <intent><action android:name="org.khronos.openxr.OpenXRRuntimeService" /></intent>
+    </queries>
+    <application android:label="@string/app_name" android:allowBackup="false" android:hasCode="true"
+        android:theme="@android:style/Theme.Material.NoActionBar.Fullscreen">
+        <meta-data android:name="com.oculus.supportedDevices" android:value="quest3" />
+        <activity android:name=".SetupActivity" android:exported="true" android:launchMode="singleTask"
+            android:process=":setup"
+            android:taskAffinity="org.opencmr2.vr.setup" android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Material.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.2D" />
+            </intent-filter>
+            <layout android:defaultWidth="1000dp" android:defaultHeight="800dp" android:minWidth="600dp" android:minHeight="500dp" />
+        </activity>
+        <activity-alias android:name=".DataSetup" android:targetActivity=".SetupActivity" android:exported="true"
+            android:label="@string/data_setup_name">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="com.oculus.intent.category.2D" />
+            </intent-filter>
+        </activity-alias>
+        <activity android:name=".VrActivity" android:exported="true" android:launchMode="singleTask"
+            android:screenOrientation="landscape"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="com.oculus.intent.category.VR" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

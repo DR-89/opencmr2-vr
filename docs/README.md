@@ -5,6 +5,8 @@ These guides describe the maintained workflow and current project scope.
 
 | Guide | Contents |
 | --- | --- |
+| [Quest 3 and PCVR](VR.md) | OpenXR port, builds, controllers and headset validation. |
+| [VR release preparation](RELEASING.md) | APK signing, packages, source bundles and release checks. |
 | [Architecture](ARCHITECTURE.md) | Source layout, platform APIs and renderer design. |
 | [Development](DEVELOPMENT.md) | Tests, source sync, generated files and repository hygiene. |
 | [Baseline capture](BASELINE.md) | Stage capture, replay and profiling. |

@@ -53,6 +53,7 @@ struct GfxStageState {
 
 // Everything a draw depends on, copied into each recorded draw.
 struct GfxDrawState {
+    bool vrWorld = false; // race geometry; menus remain on a panel
     GfxMatrix world, view, projection, texture[2];
     GfxLight lights[8];
     bool lightEnabled[8] = {};

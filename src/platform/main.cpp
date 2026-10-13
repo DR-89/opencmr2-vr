@@ -5,6 +5,7 @@
 #include "port/sys.h"
 #include "diagnostics/timing.h"
 #include "main.h"
+int VR_RunDiagnostic();
 
 // On Android, SDLActivity calls SDL_main, which SDL_main.h renames main to.
 #ifndef __ANDROID__
@@ -17,6 +18,11 @@ int main(int argc, char **argv)
     SDL_SetMainReady();
     if (!Platform_Init(argc, argv))
         return Platform_WasSetupCanceled() ? 0 : 1;
+    if (Platform_GetSettingInt("vr.diagnostic",0)) {
+        int code=VR_RunDiagnostic();
+        Platform_Shutdown();
+        return code;
+    }
     Diagnostics::StartProfileFromEnvironment();
     unsigned int code = CMain::Initialize(Sys_GetCommandLine());
     Diagnostics::StopProfile();
