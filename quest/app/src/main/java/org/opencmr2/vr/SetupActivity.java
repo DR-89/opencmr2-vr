@@ -85,6 +85,7 @@ public final class SetupActivity extends Activity {
         if(controller.state().busy || launched) return;
         launched=true;
         Intent intent=new Intent(this,VrActivity.class).setAction(Intent.ACTION_MAIN)
+                .addCategory("com.oculus.intent.category.VR")
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("vr_test",test);
         startActivity(intent);
         finishAndRemoveTask();

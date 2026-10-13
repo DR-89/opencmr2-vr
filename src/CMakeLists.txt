@@ -111,15 +111,26 @@ if(OPENCMR2_SHADERS_MSL)
 endif()
 
 set(SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/render/shaders)
-set(SHADER_SOURCES fixed3d.vert fixedtl.vert fixed.frag clear.vert clear.frag)
+set(SHADER_SOURCES fixed3d.vert fixedtl.vert fixed.frag fixed_opaque.frag fixed_simple.frag fixed_simple_opaque.frag clear.vert clear.frag)
 set(SHADER_FILES)
 foreach(shader IN LISTS SHADER_SOURCES)
+    set(shader_source ${SHADER_DIR}/${shader})
+    set(shader_defines)
+    if(shader MATCHES "^fixed_.*\\.frag$")
+        set(shader_source ${SHADER_DIR}/fixed.frag)
+        if(shader MATCHES "simple")
+            list(APPEND shader_defines -DFIXED_SIMPLE=1)
+        endif()
+        if(shader MATCHES "opaque")
+            list(APPEND shader_defines -DFIXED_OPAQUE=1)
+        endif()
+    endif()
     set(output ${CMAKE_CURRENT_BINARY_DIR}/shaders/${shader}.spv)
     add_custom_command(
         OUTPUT ${output}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/shaders
-        COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.0 -o ${output} ${SHADER_DIR}/${shader}
-        DEPENDS ${SHADER_DIR}/${shader} ${SHADER_DIR}/common.glsl
+        COMMAND ${GLSLANG_VALIDATOR} -V --target-env vulkan1.0 ${shader_defines} -o ${output} ${shader_source}
+        DEPENDS ${shader_source} ${SHADER_DIR}/common.glsl
         COMMENT "Compiling shader ${shader}")
     list(APPEND SHADER_FILES ${output})
     if(OPENCMR2_SHADERS_MSL)

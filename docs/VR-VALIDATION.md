@@ -105,11 +105,86 @@ Base game revision:
   OpenXR loader and Microsoft x64 runtimes. This is a flat GPU/package smoke
   test, separate from the earlier PCVR headset gameplay confirmation.
 
+## 120 Hz optimization in v0.1.0-alpha.2, 13 October 2026
+
+These changes follow the `v0.1.0-alpha.1` release and are included in
+`v0.1.0-alpha.2`. Implementation and measurement instructions are in
+[QUEST-PERFORMANCE.md](QUEST-PERFORMANCE.md).
+
+### Compilation and automated checks
+
+- Windows x64 Release and Quest ARM64 debug/release builds succeed.
+- All **22 native CTest cases** pass, including the new adjacent-draw batching
+  and tracked-eye frustum tests. These cover triangle/index ordering, draw
+  barriers, 16-bit limits, near-plane intersections, stereo edges and head turns.
+- All **14 Android importer tests** pass. Android debug lint reports zero errors
+  and 43 existing warnings.
+- The Windows flat Vulkan diagnostic completes 30 frames. Its BMP SHA-256 is
+  unchanged from the released diagnostic capture:
+  `3133E89CDAAE986B19336EB960F97C8C12502657E7FDDABA2BB497D98B00B7D0`.
+  This checks the flat rendering path; it is not a new PCVR headset test.
+
+### Quest headset gameplay and measurements
+
+- The updated debug APK is installed locally, retaining imported data and saves.
+  The tester confirms racing, correct textures/transparency/fog and smoother
+  motion. After tracked-eye culling was added, the tester also confirms correct
+  visibility when looking sideways and behind.
+- In the requested additional driving check, the tester confirms that image
+  flow, head movement and controls remain very good. The stage name was not
+  supplied, so this confirmation does not establish coverage of other stages.
+- OpenXR enumerates 72/80/90/120 Hz and confirms the requested change to **120 Hz**.
+  Eye resolution remains **1344 x 1408 per eye**. Draw distance is unchanged;
+  no resolution reduction, frame generation or application spacewarp was added.
+- A captured steady racing interval contains **38 three-second reporting
+  windows**, ending between device times **02:57:45.584 and 02:59:36.689**.
+  Mean window rate is **119.97 FPS**, median **120.0**, range **119.6–120.1**.
+  The corresponding 115 runtime reports show 119–121 FPS at 120 Hz, with
+  **10 stale frames across four reports** and a reported temperature of 41 C.
+  The results therefore do not establish perfectly even delivery of every frame.
+- Mean CPU elapsed times per frame in that interval: game **1.20 ms**, runtime
+  wait/acquisition **3.03 ms**, uploads/bounds **0.69 ms**, drawing **3.05 ms**,
+  submission **0.37 ms**. Runtime wait includes pacing; these are not GPU times.
+  Around **1,077 draw calls** remain and **1,163 invisible draws** are rejected
+  per frame. There are no synchronous readbacks or intermediate flushes.
+- Earlier windows in this run included a 114.3 FPS dip. These are live driving
+  samples, not a deterministic before/after benchmark or per-frame percentiles.
+  Stage identity was not yet supplied by the tester at the time of recording.
+- Normal setup-to-game launches had intermittently returned audio with
+  passthrough only. Adding the explicit Oculus VR category to the launch intent
+  restored visible rendering in repeated local launcher tests. The tester then
+  confirms that fully closing the app and manually relaunching it through
+  **Unknown Sources** produces working picture and sound.
+
+Local evidence: `build/quest-perf-cull.log`,
+`build/quest-perf-cull-summary.json`, `build/quest-perf-final-check.log`,
+`build/pcvr-perf-cull-build.log` and `build/perf-flat-smoke.log`. Older profiling
+and intermediate-build logs remain under `build/`.
+
+### Alpha.2 release packaging
+
+- Release preparation rebuilds Windows x64 and Quest ARM64 successfully. All
+  22 native tests and 14 importer tests pass; release lint has zero errors and
+  43 warnings.
+- The signed APK uses version code **3**, version name **0.1.0-alpha.2** and the
+  same release certificate as alpha.1. It is non-debuggable and ARM64-only;
+  APK signature verification and 16 KiB alignment checks pass. Private debug
+  installations still use a different key. The signed public APK has not
+  replaced the debug build used for the confirmed headset gameplay above.
+- The Windows ZIP resolves all non-system x64 dependencies, including the
+  dynamically loaded OpenXR loader. Its extracted executable completes the
+  30-frame Vulkan diagnostic; the captured image matches the SHA-256 above.
+- Local packaging evidence: `build/alpha2-quest-release-build.log`,
+  `build/alpha2-pcvr-release-build.log`, `build/alpha2-ctest.log`,
+  `build/alpha2-apk-signature.log` and `build/alpha2-package-smoke.log`.
+
 ## Remaining validation and known limits
 
 
-- Race performance is still below the headset's 72 Hz refresh rate. The 72 FPS
-  diagnostic result must not be presented as the race frame rate.
+- The first alpha's race performance was approximately 46–55 FPS. The second
+  alpha reaches approximately 120 FPS in the measured stage sections, but
+  all stages, weather/camera combinations and long thermal sessions still need
+  measurement. Diagnostic/menu FPS must not be presented as race FPS.
 - Windows diagnostic tracking/input and the initial PCVR race are confirmed on
   the headset. PCVR frame timing and extended gameplay remain unmeasured. The initial test builds logged API-layer property-enumeration errors, traced
   to uninitialized structure headers in the pinned SDL revision. Release builds

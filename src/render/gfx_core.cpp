@@ -5,6 +5,7 @@
 #include "port/sys.h"
 #include "port/diagnostics.h"
 #include "render/gfx_internal.h"
+#include "render/draw_batch.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,7 +62,10 @@ inline void Touch()
 uint32_t RecordState()
 {
     if (s_stateDirty || s_frame.states.empty()) {
-        s_frame.states.push_back(s_state);
+        // Byte comparison is conservative: different padding only misses a
+        // merge; identical snapshots are safe to share across adjacent draws.
+        if (s_frame.states.empty() || memcmp(&s_frame.states.back(), &s_state, sizeof(s_state)) != 0)
+            s_frame.states.push_back(s_state);
         s_stateDirty = false;
     }
     return (uint32_t)s_frame.states.size() - 1;
@@ -150,7 +154,7 @@ void RecordDraw(int primitive, bool transformed, const void *vertices, DWORD ver
         cmd.indexCount = 0;
     }
     cmd.state = RecordState();
-    s_frame.commands.push_back(cmd);
+    Gfx_AppendDraw(s_frame, cmd);
 }
 
 GfxStageState *Stage(int stage)
@@ -445,8 +449,7 @@ extern "C" void Gfx_SetMaterial(const GfxMaterial *material)
 #define SETTER(name, type, field)       \
     extern "C" void name(type value)    \
     {                                   \
-        s_state.field = value;          \
-        Touch();                        \
+        if (s_state.field != value) { s_state.field = value; Touch(); } \
     }
 
 SETTER(Gfx_SetAmbient, DWORD, ambient)
@@ -470,8 +473,7 @@ SETTER(Gfx_SetTextureFactor, DWORD, textureFactor)
 #define BOOL_SETTER(name, field)        \
     extern "C" void name(BOOL value)    \
     {                                   \
-        s_state.field = value != 0;     \
-        Touch();                        \
+        if (s_state.field != (value != 0)) { s_state.field = value != 0; Touch(); } \
     }
 
 BOOL_SETTER(Gfx_SetLighting, lighting)
@@ -490,7 +492,7 @@ BOOL_SETTER(Gfx_SetAlphaTest, alphaTest)
     extern "C" void name(int stage, type value)     \
     {                                               \
         GfxStageState *s = Stage(stage);            \
-        if (s != NULL) {                            \
+        if (s != NULL && s->field != value) {        \
             s->field = value;                       \
             Touch();                                \
         }                                           \

@@ -10,7 +10,7 @@ The original authors made this port possible. Please visit and support their wor
 **You must provide your own installed PC copy of Colin McRae Rally 2.0.**
 No original game data, cars, tracks, music or videos are included in the downloads.
 
-**[Download the release](https://github.com/DR-89/opencmr2-vr/releases/tag/v0.1.0-alpha.1)**
+**[Download the release](https://github.com/DR-89/opencmr2-vr/releases/tag/v0.1.0-alpha.2)**
 · [All releases](https://github.com/DR-89/opencmr2-vr/releases)
 · [Report a VR issue](https://github.com/DR-89/opencmr2-vr/issues)
 
@@ -18,8 +18,8 @@ No original game data, cars, tracks, music or videos are included in the downloa
 
 | Version | Where the game runs | Download |
 | --- | --- | --- |
-| **Quest standalone** | On Quest 3; no gaming PC or streaming connection needed while playing | `OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.1.apk` |
-| **Windows PCVR** | On a Windows x64 gaming PC connected to a VR headset | `OpenCMR2-VR-PCVR-Windows-x64-v0.1.0-alpha.1.zip` |
+| **Quest standalone** | On Quest 3; no gaming PC or streaming connection needed while playing | `OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.2.apk` |
+| **Windows PCVR** | On a Windows x64 gaming PC connected to a VR headset | `OpenCMR2-VR-PCVR-Windows-x64-v0.1.0-alpha.2.zip` |
 
 Download these files from **Assets** on the release page. The automatically
 generated **Source code** downloads are for developers, not for installing the game.
@@ -54,7 +54,7 @@ the [SideQuest desktop installer](https://sidequestvr.com/setup-howto).
    and allow **USB debugging** for your computer.
 3. Open the SideQuest desktop installer and make sure it recognizes your headset.
 4. Use its **Install APK** function and select
-   `OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.1.apk`.
+   `OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.2.apk`.
 5. Wait for installation to finish. On the Quest, open your app library, find
    **Unknown Sources** and launch **OpenCMR2 VR**. Library labels can vary with
    the headset's system version and language.
@@ -62,7 +62,7 @@ the [SideQuest desktop installer](https://sidequestvr.com/setup-howto).
 If you already use Android platform tools, the equivalent installation command is:
 
 ```powershell
-adb install -r OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.1.apk
+adb install -r OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.2.apk
 ```
 
 Installing the APK installs the VR engine. Import your own game data next.
@@ -193,11 +193,16 @@ The importer accepts ZIPs up to 4 GiB, extracted data up to 8 GiB and up to
 
 ## Known limitations
 
-- **Quest performance:** observed race rates are approximately **46–55 FPS**.
-  The simple VR test scene reaches 72 FPS; that is not the race frame rate.
+- **Quest performance:** this release requests **120 Hz** and reaches roughly
+  **120 FPS** in the tested stage sections at the same eye resolution as alpha.1.
+  The measured steady driving sample averages **119.97 FPS**; occasional missed
+  frames remain, and this does not guarantee 120 FPS on every stage or during
+  long sessions. See the [performance notes](docs/QUEST-PERFORMANCE.md) and
+  [measured validation results](docs/VR-VALIDATION.md).
 - Quest 3 standalone gameplay and Windows PCVR gameplay have been confirmed on
   hardware. The initial user tests used development builds; release packaging
   checks are documented separately in [validation notes](docs/VR-VALIDATION.md).
+  The latest renderer was retested on Quest; a new PCVR headset test is pending.
 - Only the Touch interaction profile has motion-controller bindings. Other
   headsets and Quest models are untested. Split-screen is not adapted for VR.
 - Extended races, finish/save/load, suspend/resume, controller reconnects and

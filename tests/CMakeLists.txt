@@ -1,4 +1,10 @@
 # Headset-independent VR math and SDL virtual-gamepad regression tests.
+add_executable(draw_batch_test draw_batch.cpp)
+target_include_directories(draw_batch_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_test(NAME draw_batch COMMAND draw_batch_test)
+add_executable(frustum_test frustum.cpp)
+target_include_directories(frustum_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
+add_test(NAME tracked_frustum COMMAND frustum_test)
 add_executable(vr_math_test vr_math.cpp)
 target_include_directories(vr_math_test PRIVATE ${PROJECT_SOURCE_DIR}/src)
 add_test(NAME vr_math COMMAND vr_math_test)

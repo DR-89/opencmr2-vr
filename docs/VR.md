@@ -234,6 +234,10 @@ In `opencmr2.ini`:
 [vr]
 enabled = 1
 resolution_percent = 80
+; Quest default: request 120 Hz. PCVR default: 0 (keep runtime preference).
+refresh_hz = 120
+; Optional CPU elapsed-time breakdown in the log; 0 by default.
+frame_stats = 0
 world_scale_percent = 100
 gamepad_index = 0
 ```
@@ -241,6 +245,13 @@ gamepad_index = 0
 Resolution is clamped to 40–150% of each runtime-recommended eye size. World scale
 is 10–1000%; 100 means one game unit per metre and needs in-car confirmation.
 Recenter from the intended seated driving position.
+
+The runtime must advertise a refresh rate before the app requests it. Unsupported
+rates fall back to the highest advertised rate below the request; `0` keeps the
+runtime preference. The log records both the request and the actual refresh-rate
+change. A 120 Hz display setting alone does not establish 120 rendered FPS.
+See [Quest performance notes](QUEST-PERFORMANCE.md) for the rendering changes and
+on-device measurement procedure. The mono-camera lens flare is disabled in VR.
 
 ## Validation required before release
 

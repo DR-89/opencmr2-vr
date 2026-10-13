@@ -5,6 +5,7 @@
 #include "port/sys.h"
 #include "render/presentation.h"
 #include "render/gfx_internal.h"
+#include "render/frustum.h"
 #include "vr/runtime.h"
 #include "port/vr.h"
 
@@ -153,20 +154,33 @@ struct Executor : GfxExecutor {
     SDL_GPUDevice *device = nullptr;
     SDL_Window *window = nullptr;
     SDL_GPUShader *vs3d = nullptr, *vsTL = nullptr, *fs = nullptr, *vsClear = nullptr, *fsClear = nullptr;
+    SDL_GPUShader *fsOpaque=nullptr, *fsSimple=nullptr, *fsSimpleOpaque=nullptr;
     SDL_GPUTexture *backColor = nullptr, *backDepth = nullptr;
     int backWidth = 0, backHeight = 0;
     SDL_GPUTextureFormat colorFormat = SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM;
     SDL_GPUTextureFormat depthFormat = SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT;
     SDL_GPUBuffer *vertexBuffer = nullptr, *indexBuffer = nullptr;
     uint32_t vertexCapacity = 0, indexCapacity = 0;
+    SDL_GPUTransferBuffer *geometryTransfer = nullptr;
+    uint32_t geometryTransferCapacity = 0;
+    int anisotropy = 1;
+    float worldUnits = 1.0f;
+    std::vector<GfxBounds> drawBounds;
     SDL_GPUTexture *white2D = nullptr, *whiteCube = nullptr;
     std::unordered_map<uint32_t, SDL_GPUGraphicsPipeline *> pipelines;
     std::unordered_map<uint32_t, SDL_GPUSampler *> samplers;
     bool bcSupported = true;
     bool presentModeVsync = true;
-    SDL_GPUTexture *eyeColor[2] = {}, *eyeDepth[2] = {};
+    SDL_GPUTexture *eyeDepth[2] = {};
     bool eyeInitialized[2] = {}, worldFrame = false, windowClaimed = false;
     int executionEye = -1;
+    // PORT: optional CPU-side frame breakdown; GPU time comes from the runtime.
+    bool frameStats = false;
+    struct Statistics {
+        Uint64 start=0, previous=0, game=0, wait=0, upload=0, draw=0, submit=0;
+        unsigned frames=0, draws=0, passes=0, flushes=0, readbacks=0, culled=0;
+        Uint64 bytes=0;
+    } stats;
 
     ~Executor() override
     {
@@ -175,7 +189,6 @@ struct Executor : GfxExecutor {
         SDL_WaitForGPUIdle(device);
         VR::Shutdown(device);
         for (int i=0; i<2; ++i) {
-            SDL_ReleaseGPUTexture(device, eyeColor[i]);
             SDL_ReleaseGPUTexture(device, eyeDepth[i]);
         }
         for (auto &p : pipelines)
@@ -188,9 +201,13 @@ struct Executor : GfxExecutor {
         SDL_ReleaseGPUTexture(device, whiteCube);
         SDL_ReleaseGPUBuffer(device, vertexBuffer);
         SDL_ReleaseGPUBuffer(device, indexBuffer);
+        SDL_ReleaseGPUTransferBuffer(device, geometryTransfer);
         SDL_ReleaseGPUShader(device, vs3d);
         SDL_ReleaseGPUShader(device, vsTL);
         SDL_ReleaseGPUShader(device, fs);
+        SDL_ReleaseGPUShader(device, fsOpaque);
+        SDL_ReleaseGPUShader(device, fsSimple);
+        SDL_ReleaseGPUShader(device, fsSimpleOpaque);
         SDL_ReleaseGPUShader(device, vsClear);
         SDL_ReleaseGPUShader(device, fsClear);
         if (windowClaimed) SDL_ReleaseWindowFromGPUDevice(device, window);
@@ -249,6 +266,9 @@ struct Executor : GfxExecutor {
             return false;
         }
         bool debug = Platform_GetSettingInt("video.gpu_debug", 0) != 0;
+        frameStats = Platform_GetSettingInt("vr.frame_stats", 0) != 0;
+        anisotropy = Platform_GetSettingInt("video.anisotropy", 1);
+        worldUnits = std::clamp(Platform_GetSettingInt("vr.world_scale_percent",100),10,1000)/100.0f;
         SDL_GPUShaderFormat formats = SDL_GPU_SHADERFORMAT_SPIRV;
 #ifdef OPENCMR2_SHADERS_MSL
         formats |= SDL_GPU_SHADERFORMAT_MSL;
@@ -298,13 +318,12 @@ struct Executor : GfxExecutor {
                                           SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET))
             depthFormat = SDL_GPU_TEXTUREFORMAT_D32_FLOAT;
         if (VR_IsEnabled()) {
+            colorFormat=VR::ColorFormat();
             for (int i=0;i<2;++i) {
                 const auto &eye=VR::GetEye(i);
-                eyeColor[i]=CreateTexture(SDL_GPU_TEXTURETYPE_2D,colorFormat,eye.width,eye.height,1,1,
-                    SDL_GPU_TEXTUREUSAGE_COLOR_TARGET|SDL_GPU_TEXTUREUSAGE_SAMPLER);
                 eyeDepth[i]=CreateTexture(SDL_GPU_TEXTURETYPE_2D,depthFormat,eye.width,eye.height,1,1,
                     SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET);
-                if (!eyeColor[i] || !eyeDepth[i]) return false;
+                if (!eyeDepth[i]) return false;
             }
         }
         bcSupported = SDL_GPUTextureSupportsFormat(device, SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM,
@@ -313,9 +332,12 @@ struct Executor : GfxExecutor {
         vs3d = Shader(SHADER_CODE(fixed3d_vert), SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         vsTL = Shader(SHADER_CODE(fixedtl_vert), SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         fs = Shader(SHADER_CODE(fixed_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);
+        fsOpaque = Shader(SHADER_CODE(fixed_opaque_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);
+        fsSimple = Shader(SHADER_CODE(fixed_simple_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);
+        fsSimpleOpaque = Shader(SHADER_CODE(fixed_simple_opaque_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 4, 1);
         vsClear = Shader(SHADER_CODE(clear_vert), SDL_GPU_SHADERSTAGE_VERTEX, 0, 1);
         fsClear = Shader(SHADER_CODE(clear_frag), SDL_GPU_SHADERSTAGE_FRAGMENT, 0, 1);
-        if (!vs3d || !vsTL || !fs || !vsClear || !fsClear)
+        if (!vs3d || !vsTL || !fs || !fsOpaque || !fsSimple || !fsSimpleOpaque || !vsClear || !fsClear)
             return false;
 
         white2D = CreateTexture(SDL_GPU_TEXTURETYPE_2D, SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM, 1, 1, 1, 1,
@@ -587,11 +609,18 @@ struct Executor : GfxExecutor {
     SDL_GPUGraphicsPipeline *Pipeline(const GfxCommand &cmd, const GfxDrawState &s)
     {
         bool depthTest = s.depthTest;
+        const auto &stage=s.stages[0];
+        const auto diffuse=[](int arg) { return arg==GFX_TA_DIFFUSE || arg==GFX_TA_CURRENT; };
+        const bool simple=s.stages[1].colorOp==GFX_TOP_DISABLE && TextureKind(stage)==1 &&
+            stage.colorOp==GFX_TOP_MODULATE && stage.colorArg1==GFX_TA_TEXTURE && diffuse(stage.colorArg2) &&
+            stage.alphaArg1==GFX_TA_TEXTURE && diffuse(stage.alphaArg2) &&
+            (stage.alphaOp==GFX_TOP_SELECTARG1 || stage.alphaOp==GFX_TOP_SELECTARG2 || stage.alphaOp==GFX_TOP_MODULATE);
+        const bool opaque=!s.alphaTest;
         uint32_t key = (cmd.transformed ? 1u : 0u) | (uint32_t)(cmd.primitive & 7) << 1 |
                        (s.alphaBlend ? 1u : 0u) << 4 | (uint32_t)(s.srcBlend & 15) << 5 |
                        (uint32_t)(s.destBlend & 15) << 9 | (depthTest ? 1u : 0u) << 13 |
                        ((depthTest && s.depthWrite) ? 1u : 0u) << 14 | (uint32_t)(s.depthFunc & 15) << 15 |
-                       (uint32_t)(s.cull & 3) << 19;
+                       (uint32_t)(s.cull & 3) << 19 | (simple?1u:0u)<<21 | (opaque?1u:0u)<<22;
         auto it = pipelines.find(key);
         if (it != pipelines.end())
             return it->second;
@@ -631,7 +660,7 @@ struct Executor : GfxExecutor {
 
         SDL_GPUGraphicsPipelineCreateInfo info = {};
         info.vertex_shader = cmd.transformed ? vsTL : vs3d;
-        info.fragment_shader = fs;
+        info.fragment_shader = simple ? (opaque?fsSimpleOpaque:fsSimple) : (opaque?fsOpaque:fs);
         info.vertex_input_state.vertex_buffer_descriptions = &vb;
         info.vertex_input_state.num_vertex_buffers = 1;
         info.vertex_input_state.vertex_attributes = attrs;
@@ -691,7 +720,7 @@ struct Executor : GfxExecutor {
 
     SDL_GPUSampler *Sampler(const GfxStageState &stage)
     {
-        int aniso = Platform_GetSettingInt("video.anisotropy", 1);
+        int aniso = anisotropy;
         uint32_t key = (uint32_t)(stage.minFilter & 3) | (uint32_t)(stage.magFilter & 3) << 2 |
                        (uint32_t)(stage.mipFilter & 3) << 4 | (uint32_t)(stage.address & 3) << 6 |
                        (uint32_t)(aniso & 31) << 8;
@@ -734,6 +763,7 @@ struct Executor : GfxExecutor {
         Color(s.ambient, u.globalAmbient);
         u.globalAmbient[3] = s.material.power;
         for (int i = 0; i < 8; i++) {
+            if (!s.lightEnabled[i]) continue;
             const GfxLight &l = s.lights[i];
             LightUniform &lu = u.lights[i];
             Copy4(l.diffuse, lu.diffuse);
@@ -780,6 +810,7 @@ struct Executor : GfxExecutor {
                 Multiply(s.world, view, u.worldView);
                 memcpy(u.projection, &eye.projection, sizeof(u.projection));
                 for (int i=0; i<8; ++i) {
+                    if (!s.lightEnabled[i]) continue;
                     TransformPoint(s.lights[i].position,1,view,u.lights[i].position);
                     TransformPoint(s.lights[i].direction,0,view,u.lights[i].direction);
                 }
@@ -788,7 +819,7 @@ struct Executor : GfxExecutor {
                 auto matrix = VR::Multiply(eye.view,eye.projection);
                 memcpy(u.vrClip,&matrix,sizeof(u.vrClip));
                 u.vrParams[0]=s.vrWorld ? 1.0f : 2.0f;
-                float units=std::clamp(Platform_GetSettingInt("vr.world_scale_percent",100),10,1000)/100.0f;
+                float units=worldUnits;
                 u.vrParams[1]=1.5f*units;
                 u.vrParams[2]=1.5f*units*backHeight/backWidth;
                 u.vrParams[3]=2.5f*units;
@@ -889,9 +920,16 @@ struct Executor : GfxExecutor {
         if (vertexBytes == 0)
             return;
         EnsureBuffers(vertexBytes, std::max(indexBytes, 4u));
-        SDL_GPUTransferBufferCreateInfo tbi = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, vertexBytes + indexBytes, 0 };
-        SDL_GPUTransferBuffer *tb = SDL_CreateGPUTransferBuffer(device, &tbi);
-        uint8_t *map = (uint8_t *)SDL_MapGPUTransferBuffer(device, tb, false);
+        // Cycle reusable staging memory while older frames are still in flight.
+        // Creating/destroying a mapped allocation each frame is costly on Quest.
+        if (vertexBytes+indexBytes>geometryTransferCapacity) {
+            SDL_ReleaseGPUTransferBuffer(device, geometryTransfer);
+            geometryTransferCapacity=std::max(vertexBytes+indexBytes,geometryTransferCapacity*2);
+            SDL_GPUTransferBufferCreateInfo tbi = { SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, geometryTransferCapacity, 0 };
+            geometryTransfer=SDL_CreateGPUTransferBuffer(device,&tbi);
+        }
+        SDL_GPUTransferBuffer *tb=geometryTransfer;
+        uint8_t *map = (uint8_t *)SDL_MapGPUTransferBuffer(device, tb, true);
         memcpy(map, frame.vertices.data(), vertexBytes);
         if (indexBytes)
             memcpy(map + vertexBytes, frame.indices.data(), indexBytes);
@@ -906,7 +944,6 @@ struct Executor : GfxExecutor {
             SDL_UploadToGPUBuffer(copy, &isrc, &idst, true);
         }
         SDL_EndGPUCopyPass(copy);
-        SDL_ReleaseGPUTransferBuffer(device, tb);
     }
 
     SDL_GPURenderPass *BeginPass(SDL_GPUCommandBuffer *cmd, GfxTexture *target, int &w, int &h)
@@ -920,7 +957,7 @@ struct Executor : GfxExecutor {
         depth.stencil_load_op = SDL_GPU_LOADOP_DONT_CARE;
         depth.stencil_store_op = SDL_GPU_STOREOP_DONT_CARE;
         if (target == NULL) {
-            color.texture = executionEye < 0 ? backColor : eyeColor[executionEye];
+            color.texture = executionEye < 0 ? backColor : VR::GetEye(executionEye).texture;
             depth.texture = executionEye < 0 ? backDepth : eyeDepth[executionEye];
             w = executionEye < 0 ? backWidth : VR::GetEye(executionEye).width;
             h = executionEye < 0 ? backHeight : VR::GetEye(executionEye).height;
@@ -946,7 +983,16 @@ struct Executor : GfxExecutor {
     {
         if (device == NULL)
             return;
+        Uint64 timing = frameStats ? SDL_GetTicksNS() : 0;
+        if (frameStats) {
+            if (!stats.start) stats.start=timing;
+            if (stats.previous) stats.game+=timing-stats.previous;
+        }
         VR::BeginFrame();
+        bool stereo=VR::Rendering() && (worldFrame || std::any_of(frame.states.begin(),frame.states.end(),
+            [](const GfxDrawState &s) { return s.vrWorld; }));
+        if(stereo && !VR::AcquireEyes()) return;
+        if (frameStats) { auto now=SDL_GetTicksNS(); stats.wait+=now-timing; timing=now; }
         SDL_GPUCommandBuffer *cmd = SDL_AcquireGPUCommandBuffer(device);
         if (cmd == NULL) {
             Sys_Log("gfx: %s", SDL_GetError());
@@ -962,9 +1008,26 @@ struct Executor : GfxExecutor {
                 Ensure(c.target->cube != NULL ? c.target->cube : c.target);
         UploadTextures(cmd, textures);
         UploadGeometry(cmd, frame);
+        if(stereo) {
+            drawBounds.resize(frame.commands.size());
+            for(size_t i=0;i<frame.commands.size();++i) {
+                const auto &c=frame.commands[i];
+                drawBounds[i]={};
+                if(c.type==GFX_CMD_DRAW && !c.transformed && frame.states[c.state].vrWorld &&
+                   uint64_t(c.firstVertexByte)+uint64_t(c.vertexCount)*sizeof(GfxVertex)<=frame.vertices.size())
+                    drawBounds[i]=Gfx_VertexBounds(frame.vertices.data()+c.firstVertexByte,c.vertexCount);
+            }
+        }
+        if (frameStats) {
+            auto now=SDL_GetTicksNS(); stats.upload+=now-timing; timing=now;
+            stats.bytes+=frame.vertices.size()+frame.indices.size()*sizeof(uint16_t);
+        }
 
-        for (executionEye=-1; executionEye < (VR::Rendering()?2:0); ++executionEye) {
+        for (executionEye=-1; executionEye < (stereo?2:0); ++executionEye) {
         SDL_GPURenderPass *pass = NULL;
+        VertexUniforms lastVertex{};
+        FragmentUniforms lastFragment{};
+        bool vertexValid=false, fragmentValid=false;
         GfxTexture *target = NULL;
         int targetW = backWidth, targetH = backHeight;
         for (const GfxCommand &c : frame.commands) {
@@ -972,14 +1035,17 @@ struct Executor : GfxExecutor {
                 if (pass != NULL) {
                     SDL_EndGPURenderPass(pass);
                     pass = NULL;
+                    vertexValid=fragmentValid=false;
                 }
                 target = c.target;
                 continue;
             }
             // Reflection maps execute once, on the shared mono pass.
             if (executionEye >= 0 && target != NULL) continue;
-            if (pass == NULL)
+            if (pass == NULL) {
                 pass = BeginPass(cmd, target, targetW, targetH);
+                if (frameStats) ++stats.passes;
+            }
             if (c.type == GFX_CMD_CLEAR) {
                 bool colorClear = (c.clearFlags & GFX_CLEAR_TARGET) != 0;
                 bool depthClear = (c.clearFlags & GFX_CLEAR_ZBUFFER) != 0;
@@ -1000,6 +1066,7 @@ struct Executor : GfxExecutor {
                 SDL_PushGPUVertexUniformData(cmd, 0, &u, sizeof(u));
                 SDL_PushGPUFragmentUniformData(cmd, 0, &u, sizeof(u));
                 SDL_DrawGPUPrimitives(pass, 3, 1, 0, 0);
+                vertexValid=fragmentValid=false;
                 continue;
             }
             const GfxDrawState &s = frame.states[c.state];
@@ -1012,6 +1079,15 @@ struct Executor : GfxExecutor {
                 continue;
 #endif
             if (executionEye >= 0 && !s.vrWorld && !c.transformed) continue;
+            if (executionEye>=0 && s.vrWorld && !c.transformed) {
+                const auto &eye=VR::GetEye(executionEye);
+                const auto view=VR::Multiply(s.view,eye.view);
+                const auto clip=VR::Multiply(VR::Multiply(s.world,view),eye.projection);
+                if(!Gfx_BoundsVisible(drawBounds[&c-frame.commands.data()],clip)) {
+                    if(frameStats) ++stats.culled;
+                    continue;
+                }
+            }
             SDL_GPUGraphicsPipeline *pipeline = Pipeline(c, s);
             if (pipeline == NULL)
                 continue;
@@ -1032,11 +1108,18 @@ struct Executor : GfxExecutor {
             SDL_SetGPUScissor(pass, &scissor);
             VertexUniforms vu;
             FillVertexUniforms(c, s, targetW, targetH, vu);
-            SDL_PushGPUVertexUniformData(cmd, 0, &vu, sizeof(vu));
+            if(!vertexValid || memcmp(&vu,&lastVertex,sizeof(vu))) {
+                SDL_PushGPUVertexUniformData(cmd, 0, &vu, sizeof(vu));
+                lastVertex=vu; vertexValid=true;
+            }
             FragmentUniforms fu;
             FillFragmentUniforms(s, fu);
-            SDL_PushGPUFragmentUniformData(cmd, 0, &fu, sizeof(fu));
+            if(!fragmentValid || memcmp(&fu,&lastFragment,sizeof(fu))) {
+                SDL_PushGPUFragmentUniformData(cmd, 0, &fu, sizeof(fu));
+                lastFragment=fu; fragmentValid=true;
+            }
             BindTextures(pass, s);
+            if (frameStats) ++stats.draws;
             SDL_GPUBufferBinding vb = { vertexBuffer, c.firstVertexByte };
             SDL_BindGPUVertexBuffers(pass, 0, &vb, 1);
             if (c.firstIndex != ~0u) {
@@ -1051,9 +1134,13 @@ struct Executor : GfxExecutor {
             SDL_EndGPURenderPass(pass);
         }
         executionEye=-1;
+        if (frameStats) { auto now=SDL_GetTicksNS(); stats.draw+=now-timing; timing=now; }
 
         if (!present) {
             SDL_SubmitGPUCommandBuffer(cmd);
+            if (frameStats) {
+                ++stats.flushes; stats.previous=SDL_GetTicksNS(); stats.submit+=stats.previous-timing;
+            }
             return;
         }
 
@@ -1111,6 +1198,7 @@ struct Executor : GfxExecutor {
         }
 
         if (readbackBuffer != NULL) {
+            if (frameStats) ++stats.readbacks;
             SDL_GPUFence *fence = SDL_SubmitGPUCommandBufferAndAcquireFence(cmd);
             SDL_WaitForGPUFences(device, true, &fence, 1);
             SDL_ReleaseGPUFence(device, fence);
@@ -1123,7 +1211,21 @@ struct Executor : GfxExecutor {
         } else {
             SDL_SubmitGPUCommandBuffer(cmd);
         }
-        VR::EndFrame(worldFrame,backColor,eyeColor[0],eyeColor[1],backWidth,backHeight);
+        VR::EndFrame(worldFrame,backColor,backWidth,backHeight);
+        if (frameStats) {
+            const auto now=SDL_GetTicksNS(); stats.submit+=now-timing; stats.previous=now;
+            ++stats.frames;
+            if (now-stats.start>=3000000000ULL) {
+                const double ms=1e-6/stats.frames;
+                Sys_Log("vr perf: %s %.1f fps; CPU game=%.2f wait=%.2f upload=%.2f draw=%.2f submit=%.2f ms; draws=%.0f passes=%.1f flushes=%.1f readbacks=%.1f upload=%.2f MB/frame culled=%.0f",
+                    worldFrame?"world":"panel", stats.frames*1e9/(now-stats.start),
+                    stats.game*ms,stats.wait*ms,stats.upload*ms,stats.draw*ms,stats.submit*ms,
+                    (double)stats.draws/stats.frames,(double)stats.passes/stats.frames,
+                    (double)stats.flushes/stats.frames,(double)stats.readbacks/stats.frames,
+                    (double)stats.bytes/stats.frames/1048576.0,(double)stats.culled/stats.frames);
+                stats={}; stats.start=stats.previous=now;
+            }
+        }
         worldFrame=false;
         eyeInitialized[0]=eyeInitialized[1]=false;
     }

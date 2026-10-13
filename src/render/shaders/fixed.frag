@@ -102,6 +102,13 @@ void main()
     vec2 bumpOffset = vec2(0.0);
     float luminance = 1.0;
 
+#ifdef FIXED_SIMPLE
+    // Common road/terrain pass, selected only for this exact fixed-function state.
+    vec4 texel = texture(tex0, inTex0.xy);
+    float alpha = stage0.w == TOP_SELECTARG1 ? texel.a :
+                  stage0.w == TOP_SELECTARG2 ? inDiffuse.a : texel.a * inDiffuse.a;
+    current = vec4(texel.rgb * inDiffuse.rgb, alpha);
+#else
     // Stage 0.
     if (stage0.x != TOP_DISABLE) {
         if (stage0.x == TOP_BUMPENVMAP || stage0.x == TOP_BUMPENVMAPLUMINANCE) {
@@ -129,11 +136,14 @@ void main()
         }
     }
 
+#endif
     if (fogMode.z != 0)
         current.rgb = clamp(current.rgb + inSpecular.rgb, 0.0, 1.0);
 
+#ifndef FIXED_OPAQUE
     if (alphaTest.x != 0 && !Compare(alphaTest.y, floor(current.a * 255.0 + 0.5), floor(alphaRef.x * 255.0 + 0.5)))
         discard;
+#endif
 
     if (fogMode.x != 0) {
         float f = inFog;

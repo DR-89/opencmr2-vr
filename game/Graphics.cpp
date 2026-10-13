@@ -1,4 +1,5 @@
 #include "port/sys.h"
+#include "port/vr.h"
 #include <stdio.h>
 #include "FloatToInt.h"
 #include <stddef.h>
@@ -3707,6 +3708,13 @@ BYTE g_flareTolerance;
 // FUNCTION: CMR2 0x004bc490
 BYTE Flare_SampleVisibility(short *pRect, BYTE *pColour, BYTE tolerance)
 {
+    // PORT: the original lens flare samples the mono camera, which does not
+    // match either tracked eye. Disable it in VR instead of drawing a third
+    // stage view and synchronously stalling the CPU for a GPU readback.
+    if (VR_IsEnabled()) {
+        g_flareVisibility = 0;
+        return 0;
+    }
     GfxLockedRect desc;
     RECT src;
     RECT dst;

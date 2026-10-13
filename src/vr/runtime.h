@@ -19,8 +19,10 @@ bool Initialize(SDL_GPUDevice *device);
 void Shutdown(SDL_GPUDevice *device);
 void BeginFrame(); // idempotent until EndFrame: also handles intermediate game flushes
 bool Rendering();
+bool AcquireEyes();
+SDL_GPUTextureFormat ColorFormat();
 const Eye &GetEye(int index);
-void EndFrame(bool world, SDL_GPUTexture *menu, SDL_GPUTexture *left, SDL_GPUTexture *right, int w, int h);
+void EndFrame(bool world, SDL_GPUTexture *menu, int w, int h);
 const Controls &MotionControls();
 bool Focused();
 void Recenter();
@@ -30,8 +32,10 @@ inline bool Initialize(SDL_GPUDevice *) { return true; }
 inline void Shutdown(SDL_GPUDevice *) {}
 inline void BeginFrame() {}
 inline bool Rendering() { return false; }
+inline bool AcquireEyes() { return false; }
+inline SDL_GPUTextureFormat ColorFormat() { return SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM; }
 inline const Eye &GetEye(int) { static Eye e; return e; }
-inline void EndFrame(bool,SDL_GPUTexture *,SDL_GPUTexture *,SDL_GPUTexture *,int,int) {}
+inline void EndFrame(bool,SDL_GPUTexture *,int,int) {}
 inline const Controls &MotionControls() { static Controls c; return c; }
 inline bool Focused() { return false; }
 inline void Recenter() {}

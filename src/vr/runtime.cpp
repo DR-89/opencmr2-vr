@@ -44,6 +44,45 @@ struct Swapchain {
     int width=0,height=0;
 } swaps[3];
 XrAction steer,throttle,brake,accept,back,handbrake,gearDown,camera,recenter;
+std::vector<const char *> optionalExtensions;
+PFN_xrEnumerateDisplayRefreshRatesFB enumerateRefreshRates=nullptr;
+PFN_xrRequestDisplayRefreshRateFB requestRefreshRate=nullptr;
+PFN_xrGetDisplayRefreshRateFB getRefreshRate=nullptr;
+PFN_xrPerfSettingsSetPerformanceLevelEXT setPerformanceLevel=nullptr;
+
+void ConfigurePerformance() {
+    // PORT: request sustained operation, leaving thermal limits to the runtime.
+    if (setPerformanceLevel) {
+        for (auto domain : {XR_PERF_SETTINGS_DOMAIN_CPU_EXT,XR_PERF_SETTINGS_DOMAIN_GPU_EXT}) {
+            auto r=setPerformanceLevel(session,domain,XR_PERF_SETTINGS_LEVEL_SUSTAINED_HIGH_EXT);
+            Sys_Log("vr: sustained performance domain %d result %d",(int)domain,(int)r);
+        }
+    }
+#ifdef __ANDROID__
+    constexpr int defaultRefresh=120;
+#else
+    constexpr int defaultRefresh=0; // PCVR keeps the user's runtime setting.
+#endif
+    const int wanted=Platform_GetSettingInt("vr.refresh_hz",defaultRefresh);
+    if (enumerateRefreshRates && requestRefreshRate && wanted>0) {
+        uint32_t count=0;
+        if (XR_SUCCEEDED(enumerateRefreshRates(session,0,&count,nullptr))) {
+            std::vector<float> rates(count);
+            if (XR_SUCCEEDED(enumerateRefreshRates(session,count,&count,rates.data()))) {
+                float selected=0;
+                for(float rate:rates) {
+                    Sys_Log("vr: supported refresh %.1f Hz",rate);
+                    if(rate<=wanted && rate>selected) selected=rate;
+                }
+                if(selected>0) Sys_Log("vr: request %.1f Hz result %d",selected,(int)requestRefreshRate(session,selected));
+            }
+        }
+    }
+    if(getRefreshRate) {
+        float current=0;
+        if(XR_SUCCEEDED(getRefreshRate(session,&current))) Sys_Log("vr: current refresh %.1f Hz",current);
+    }
+}
 
 bool Check(XrResult r,const char *operation) {
     if (XR_SUCCEEDED(r)) return true;
@@ -157,6 +196,26 @@ void ConfigureDevice(SDL_PropertiesID props) {
     SDL_SetPointerProperty(props,SDL_PROP_GPU_DEVICE_CREATE_XR_SYSTEM_ID_POINTER,&systemId);
     SDL_SetNumberProperty(props,SDL_PROP_GPU_DEVICE_CREATE_XR_VERSION_NUMBER,XR_MAKE_VERSION(1,0,0));
     SDL_SetStringProperty(props,SDL_PROP_GPU_DEVICE_CREATE_XR_APPLICATION_NAME_STRING,"OpenCMR2 VR");
+    // Enable optional extensions only when advertised by this OpenXR runtime.
+    optionalExtensions.clear();
+    if(SDL_OpenXR_LoadLibrary()) {
+        auto get=SDL_OpenXR_GetXrGetInstanceProcAddr();
+        PFN_xrEnumerateInstanceExtensionProperties enumerate=nullptr;
+        uint32_t count=0;
+        if(get && XR_SUCCEEDED(get(XR_NULL_HANDLE,"xrEnumerateInstanceExtensionProperties",(PFN_xrVoidFunction*)&enumerate)) &&
+           enumerate && XR_SUCCEEDED(enumerate(nullptr,0,&count,nullptr))) {
+            std::vector<XrExtensionProperties> extensions(count,{XR_TYPE_EXTENSION_PROPERTIES});
+            if(XR_SUCCEEDED(enumerate(nullptr,count,&count,extensions.data()))) {
+                for(const char *name : {XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME,XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME})
+                    for(const auto &extension:extensions) if(strcmp(name,extension.extensionName)==0) {
+                        optionalExtensions.push_back(name); break;
+                    }
+            }
+        }
+        SDL_OpenXR_UnloadLibrary();
+    }
+    SDL_SetNumberProperty(props,SDL_PROP_GPU_DEVICE_CREATE_XR_EXTENSION_COUNT_NUMBER,optionalExtensions.size());
+    SDL_SetPointerProperty(props,SDL_PROP_GPU_DEVICE_CREATE_XR_EXTENSION_NAMES_POINTER,optionalExtensions.data());
 }
 
 bool Initialize(SDL_GPUDevice *device) {
@@ -168,6 +227,14 @@ bool Initialize(SDL_GPUDevice *device) {
 #define LOAD(name) if (!Check(get(instance,"xr" #name,(PFN_xrVoidFunction*)&xr##name),"load xr" #name)) return false;
     XR_FUNCTIONS(LOAD)
 #undef LOAD
+    for(const char *name:optionalExtensions) {
+        if(strcmp(name,XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME)==0) {
+            get(instance,"xrEnumerateDisplayRefreshRatesFB",(PFN_xrVoidFunction*)&enumerateRefreshRates);
+            get(instance,"xrRequestDisplayRefreshRateFB",(PFN_xrVoidFunction*)&requestRefreshRate);
+            get(instance,"xrGetDisplayRefreshRateFB",(PFN_xrVoidFunction*)&getRefreshRate);
+        } else if(strcmp(name,XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME)==0)
+            get(instance,"xrPerfSettingsSetPerformanceLevelEXT",(PFN_xrVoidFunction*)&setPerformanceLevel);
+    }
     XrInstanceProperties properties{XR_TYPE_INSTANCE_PROPERTIES};
     if (Check(xrGetInstanceProperties(instance,&properties),"runtime properties"))
         Sys_Log("vr: OpenXR runtime %s",properties.runtimeName);
@@ -223,9 +290,13 @@ void BeginFrame() {
                 XrSessionBeginInfo start{XR_TYPE_SESSION_BEGIN_INFO}; start.primaryViewConfigurationType=XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                 running=Check(xrBeginSession(session,&start),"begin session"); needOrigin=true;
                 if(!running) Quit();
+                else ConfigurePerformance();
             } else if(state==XR_SESSION_STATE_STOPPING && running) {
                 Check(xrEndSession(session),"end session"); running=false; motion={};
             } else if(state==XR_SESSION_STATE_EXITING || state==XR_SESSION_STATE_LOSS_PENDING) Quit();
+        } else if(event.type==XR_TYPE_EVENT_DATA_DISPLAY_REFRESH_RATE_CHANGED_FB) {
+            const auto &change=*(const XrEventDataDisplayRefreshRateChangedFB*)&event;
+            Sys_Log("vr: refresh changed %.1f -> %.1f Hz",change.fromDisplayRefreshRate,change.toDisplayRefreshRate);
         } else if(event.type==XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING) Quit();
         else if(event.type==XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING) needOrigin=true;
         event={XR_TYPE_EVENT_DATA_BUFFER};
@@ -264,37 +335,46 @@ void BeginFrame() {
 }
 
 bool Rendering() { return render && begun; }
+SDL_GPUTextureFormat ColorFormat() { return format; }
+bool AcquireEyes() {
+    if(!Rendering()) return false;
+    for(int i=0;i<2;++i) {
+        if(!swaps[i].waited && !Acquire(swaps[i])) { Quit(); return false; }
+        eyes[i].texture=swaps[i].images[swaps[i].index];
+    }
+    return true;
+}
 const Eye &GetEye(int i) { return eyes[i]; }
 const Controls &MotionControls() { return motion; }
 bool Focused() { return running && state==XR_SESSION_STATE_FOCUSED && !failed; }
 void Recenter() { needOrigin=true; }
 
-void EndFrame(bool world,SDL_GPUTexture *menu,SDL_GPUTexture *left,SDL_GPUTexture *right,int w,int h) {
+void EndFrame(bool world,SDL_GPUTexture *menu,int w,int h) {
     if(!begun) return;
     XrCompositionLayerProjectionView projectionViews[2]={{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW},{XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}};
     XrCompositionLayerProjection projection{XR_TYPE_COMPOSITION_LAYER_PROJECTION};
     XrCompositionLayerQuad quad{XR_TYPE_COMPOSITION_LAYER_QUAD};
     const XrCompositionLayerBaseHeader *layer=nullptr;
     if(render) {
-        bool ok=world ? Acquire(swaps[0]) && Acquire(swaps[1]) : Acquire(swaps[2]);
-        SDL_GPUCommandBuffer *cmd=ok ? SDL_AcquireGPUCommandBuffer(gpu) : nullptr;
-        if(cmd) {
-            for(int i=world?0:2;i<(world?2:3);++i) {
+        // PORT: world rendering already targets acquired OpenXR images. Avoid
+        // two full-size eye copies and their extra queue submission each frame.
+        bool ok=world ? swaps[0].waited && swaps[1].waited : Acquire(swaps[2]);
+        SDL_GPUCommandBuffer *cmd=ok && !world ? SDL_AcquireGPUCommandBuffer(gpu) : nullptr;
+        if(!world && cmd) {
                 SDL_GPUBlitInfo blit{};
-                blit.source.texture=world ? (i==0?left:right) : menu;
-                blit.source.w=world?eyes[i].width:w; blit.source.h=world?eyes[i].height:h;
-                blit.destination.texture=swaps[i].images[swaps[i].index];
-                blit.destination.w=swaps[i].width; blit.destination.h=swaps[i].height;
+                blit.source.texture=menu;
+                blit.source.w=w; blit.source.h=h;
+                blit.destination.texture=swaps[2].images[swaps[2].index];
+                blit.destination.w=swaps[2].width; blit.destination.h=swaps[2].height;
                 blit.load_op=SDL_GPU_LOADOP_DONT_CARE; blit.filter=SDL_GPU_FILTER_LINEAR;
                 SDL_BlitGPUTexture(cmd,&blit);
-            }
             // SDL submits to the same Vulkan queue given to OpenXR and restores
             // these color-target images to COLOR_ATTACHMENT_OPTIMAL. Release
             // after submission: the runtime synchronizes GPU completion. Queue
             // access stays on this thread; a CPU fence here serializes frames.
             // https://github.com/KhronosGroup/OpenXR-Docs/issues/177
             ok=SDL_SubmitGPUCommandBuffer(cmd);
-        } else ok=false;
+        } else if(!world) ok=false;
         for(auto &s:swaps) Release(s);
         if(ok && !failed) {
             if(world) {
@@ -320,12 +400,13 @@ void EndFrame(bool world,SDL_GPUTexture *menu,SDL_GPUTexture *left,SDL_GPUTextur
     end.layerCount=layer?1:0; end.layers=layer?&layer:nullptr;
     if(!Check(xrEndFrame(session,&end),"end frame")) Quit();
     begun=false; render=false;
+    eyes[0].texture=eyes[1].texture=nullptr;
 }
 
 void Shutdown(SDL_GPUDevice *device) {
     if(!gpu) return;
     SDL_WaitForGPUIdle(device);
-    if(begun) { render=false; EndFrame(false,nullptr,nullptr,nullptr,1,1); }
+    if(begun) { render=false; EndFrame(false,nullptr,1,1); }
     for(auto &s:swaps) {
         if(s.handle) SDL_DestroyGPUXRSwapchain(device,s.handle,s.images);
         s={};
@@ -338,6 +419,8 @@ void Shutdown(SDL_GPUDevice *device) {
     session=XR_NULL_HANDLE; instance=XR_NULL_HANDLE; localSpace=headSpace=XR_NULL_HANDLE; actionSet=XR_NULL_HANDLE;
     gpu=nullptr; motion={}; running=begun=render=failed=false; needOrigin=true;
     state=XR_SESSION_STATE_UNKNOWN; format=SDL_GPU_TEXTUREFORMAT_INVALID;
+    enumerateRefreshRates=nullptr; requestRefreshRate=nullptr; getRefreshRate=nullptr;
+    setPerformanceLevel=nullptr; optionalExtensions.clear();
     VR_ShutdownInput();
 }
 }
