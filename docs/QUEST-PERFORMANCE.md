@@ -1,7 +1,8 @@
 # Quest performance work
 
-These rendering improvements are included in `v0.1.0-alpha.2`. The earlier
-`v0.1.0-alpha.1` release contains the previous renderer.
+These rendering improvements were introduced in `v0.1.0-alpha.2` and are included
+unchanged in `v0.1.0`. The earlier `v0.1.0-alpha.1` release contains the previous
+renderer.
 
 ## Rendering changes
 

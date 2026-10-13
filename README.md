@@ -10,7 +10,7 @@ The original authors made this port possible. Please visit and support their wor
 **You must provide your own installed PC copy of Colin McRae Rally 2.0.**
 No original game data, cars, tracks, music or videos are included in the downloads.
 
-**[Download the release](https://github.com/DR-89/opencmr2-vr/releases/tag/v0.1.0-alpha.2)**
+**[Download the release](https://github.com/DR-89/opencmr2-vr/releases/tag/v0.1.0)**
 · [All releases](https://github.com/DR-89/opencmr2-vr/releases)
 · [Report a VR issue](https://github.com/DR-89/opencmr2-vr/issues)
 
@@ -18,12 +18,12 @@ No original game data, cars, tracks, music or videos are included in the downloa
 
 | Version | Where the game runs | Download |
 | --- | --- | --- |
-| **Quest standalone** | On Quest 3; no gaming PC or streaming connection needed while playing | `OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.2.apk` |
-| **Windows PCVR** | On a Windows x64 gaming PC connected to a VR headset | `OpenCMR2-VR-PCVR-Windows-x64-v0.1.0-alpha.2.zip` |
+| **Quest standalone** | On Quest 3; no gaming PC or streaming connection needed while playing | `OpenCMR2-VR-Quest-arm64-v0.1.0.apk` |
+| **Windows PCVR** | On a Windows x64 gaming PC connected to a VR headset | `OpenCMR2-VR-PCVR-Windows-x64-v0.1.0.zip` |
 
 Download these files from **Assets** on the release page. The automatically
 generated **Source code** downloads are for developers, not for installing the game.
-This release is an **alpha**: a playable race and the import flow have been tested,
+This is an **early release**: a playable race and the import flow have been tested,
 but performance and compatibility still need work. See [Known limitations](#known-limitations).
 
 ## Install on Quest 3
@@ -54,7 +54,7 @@ the [SideQuest desktop installer](https://sidequestvr.com/setup-howto).
    and allow **USB debugging** for your computer.
 3. Open the SideQuest desktop installer and make sure it recognizes your headset.
 4. Use its **Install APK** function and select
-   `OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.2.apk`.
+   `OpenCMR2-VR-Quest-arm64-v0.1.0.apk`.
 5. Wait for installation to finish. On the Quest, open your app library, find
    **Unknown Sources** and launch **OpenCMR2 VR**. Library labels can vary with
    the headset's system version and language.
@@ -62,7 +62,7 @@ the [SideQuest desktop installer](https://sidequestvr.com/setup-howto).
 If you already use Android platform tools, the equivalent installation command is:
 
 ```powershell
-adb install -r OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.2.apk
+adb install -r OpenCMR2-VR-Quest-arm64-v0.1.0.apk
 ```
 
 Installing the APK installs the VR engine. Import your own game data next.

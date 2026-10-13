@@ -45,7 +45,7 @@ Example, with paths and secrets supplied in your shell environment:
 ```powershell
 apksigner sign --ks $env:OPENCMR2_KEYSTORE --ks-key-alias opencmr2-vr `
   --ks-pass env:OPENCMR2_STORE_PASSWORD --key-pass env:OPENCMR2_KEY_PASSWORD `
-  --out dist/OpenCMR2-VR-Quest-arm64-v0.1.0-alpha.1.apk `
+  --out dist/OpenCMR2-VR-Quest-arm64-v0.1.0.apk `
   quest/app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
@@ -70,7 +70,7 @@ this checks the actual shipped DLLs.
 
 ## Source and publication
 
-`tools/package_vr_source.py --output dist/OpenCMR2-VR-Source-v0.1.0-alpha.1.tar.gz`
+`tools/package_vr_source.py --output dist/OpenCMR2-VR-Source-v0.1.0.tar.gz`
 packages tracked files at HEAD plus the pinned dependency sources, using Git
 archives. Commit the final release sources first. The SDL patch is part of the
 project and is reapplied at configure time. This avoids putting build products,

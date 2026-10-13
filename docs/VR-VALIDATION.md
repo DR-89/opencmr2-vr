@@ -178,6 +178,27 @@ and intermediate-build logs remain under `build/`.
   `build/alpha2-pcvr-release-build.log`, `build/alpha2-ctest.log`,
   `build/alpha2-apk-signature.log` and `build/alpha2-package-smoke.log`.
 
+## v0.1.0 release packaging, 13 October 2026
+
+- This release retains the game and renderer from alpha.2. Quest version name
+  is **0.1.0** and version code is **4**, signed with the same public-release
+  certificate. APK signature and 16 KiB alignment checks pass; it is
+  non-debuggable and ARM64-only.
+- Windows and Quest release builds succeed. All **22 native tests** and
+  **14 Android importer tests** pass. Release lint reports zero errors and
+  43 warnings.
+- The packaged Quest native libraries and every Windows executable/DLL are
+  byte-identical to alpha.2. The rebuilt Windows ZIP includes the updated
+  English README and launchers. Its extracted 30-frame Vulkan diagnostic
+  completes with the same image hash recorded above.
+- This packaging step adds no new headset validation. The Quest gameplay and
+  normal-launch confirmations above still apply to the development build;
+  another PCVR headset test and a signed-APK installation check remain pending.
+- Local evidence: `build/v010-quest-release-build.log`,
+  `build/v010-pcvr-release-build.log`, `build/v010-ctest.log`,
+  `build/v010-apk-signature.log`, `build/v010-apk-badging.log`,
+  `build/v010-package-smoke.log` and `build/v010-archive-audit.json`.
+
 ## Remaining validation and known limits
 
 
